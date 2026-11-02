@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rager — Ver en la web</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<style>
+  :root{
+    --bg:#101014; --panel:#1a1a21; --panel2:#22222c; --line:#2c2c38;
+    --red:#E53935; --red-dk:#B71C1C; --txt:#f2f2f5; --mut:#9a9aa8; --amber:#FFC107;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:var(--bg); color:var(--txt); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  button{font-family:inherit; cursor:pointer;}
+  input{font-family:inherit;}
+  .hidden{display:none !important;}
+
+  /* ===== Encabezado ===== */
+  header.top{
+    position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:14px;
+    padding:12px 18px; background:rgba(16,16,20,.96); border-bottom:1px solid var(--line);
+  }
+  .brand{color:var(--red); font-weight:800; font-size:26px; letter-spacing:.3px; white-space:nowrap;}
+  .badge-demo{background:var(--red-dk); color:#fff; font-size:11px; font-weight:700; padding:3px 8px; border-radius:4px; letter-spacing:.6px;}
+  .top-right{margin-left:auto; display:flex; align-items:center; gap:10px;}
+  .who{color:var(--mut); font-size:13px; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .btn-ghost{background:transparent; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:13px;}
+  .btn-ghost:hover{border-color:var(--red); color:#fff;}
+
+  /* ===== Acceso ===== */
+  .login-wrap{min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px 16px;}
+  .login-card{width:100%; max-width:380px; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:30px 26px 26px; text-align:center;}
+  .login-brand{color:var(--red); font-size:44px; font-weight:800; margin-bottom:4px;}
+  .login-sub{color:var(--mut); font-size:14px; margin-bottom:24px;}
+  .field{text-align:left; margin-bottom:14px;}
+  .field label{display:block; font-size:13px; color:var(--mut); margin-bottom:6px;}
+  .field input{width:100%; background:var(--panel2); border:1px solid var(--line); border-radius:10px; color:var(--txt); padding:13px 14px; font-size:16px; outline:none;}
+  .field input:focus{border-color:var(--red);}
+  .btn-main{width:100%; background:var(--red); color:#fff; border:none; border-radius:10px; padding:14px; font-size:16px; font-weight:700; margin-top:6px;}
+  .btn-main:hover{background:#c62828;}
+  .btn-main:disabled{opacity:.55; cursor:wait;}
+  .btn-demo{width:100%; background:transparent; color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:13px; font-size:15px; font-weight:600; margin-top:12px;}
+  .btn-demo:hover{border-color:var(--red);}
+  .msg{display:none; margin-top:16px; padding:12px 14px; border-radius:10px; font-size:14px; line-height:1.45; text-align:left;}
+  .msg.err{display:block; background:#3a1416; border:1px solid #7a2027; color:#ffb4ab;}
+  .msg.info{display:block; background:#2a2410; border:1px solid #6b5a17; color:#ffe082;}
+  .login-note{margin-top:18px; color:var(--mut); font-size:12.5px; line-height:1.5; max-width:380px; text-align:center;}
+
+  /* ===== Reproductor ===== */
+  .player-zone{background:#000; border-bottom:1px solid var(--line);}
+  .player-bar{display:flex; align-items:center; gap:12px; padding:10px 18px; background:var(--panel);}
+  .player-name{font-weight:700; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .player-cat{color:var(--mut); font-size:12.5px;}
+  .video-box{width:100%; max-height:72vh; aspect-ratio:16/9; background:#000; display:flex; align-items:center; justify-content:center;}
+  video{width:100%; height:100%; max-height:72vh; background:#000;}
+  .player-err{padding:14px 18px; background:#3a1416; color:#ffb4ab; font-size:14px; line-height:1.5; display:none;}
+  .player-err.show{display:block;}
+
+  /* ===== Catálogo ===== */
+  main{max-width:1200px; margin:0 auto; padding:18px 16px 60px;}
+  .search-row{display:flex; gap:10px; margin-bottom:16px;}
+  .search-row input{flex:1; background:var(--panel); border:1px solid var(--line); border-radius:10px; color:var(--txt); padding:12px 14px; font-size:16px; outline:none;}
+  .search-row input:focus{border-color:var(--red);}
+  .cats{display:flex; gap:8px; overflow-x:auto; padding-bottom:10px; margin-bottom:8px; scrollbar-width:thin;}
+  .chip{flex:0 0 auto; background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:999px; padding:8px 14px; font-size:13.5px;}
+  .chip.on{background:var(--red); border-color:var(--red); color:#fff; font-weight:700;}
+  .cat-block{margin-top:22px;}
+  .cat-title{font-size:18px; font-weight:700; margin-bottom:12px;}
+  .cat-title span{color:var(--mut); font-weight:400; font-size:13px; margin-left:6px;}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px;}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 12px; text-align:left; color:var(--txt); display:flex; flex-direction:column; gap:8px; min-height:92px;}
+  .card:hover{border-color:var(--red);}
+  .card .logo{height:38px; display:flex; align-items:center;}
+  .card .logo img{max-height:38px; max-width:100%; object-fit:contain;}
+  .card .logo .nologo{width:38px; height:38px; border-radius:8px; background:var(--panel2); color:var(--red); font-weight:800; display:flex; align-items:center; justify-content:center; font-size:18px;}
+  .card .name{font-size:14px; line-height:1.35; word-break:break-word;}
+  .card .play{margin-top:auto; color:var(--red); font-size:12.5px; font-weight:700;}
+  .empty{color:var(--mut); text-align:center; padding:40px 10px; font-size:15px; line-height:1.6;}
+  .demo-banner{background:#2a2410; border:1px solid #6b5a17; color:#ffe082; border-radius:10px; padding:12px 14px; font-size:14px; line-height:1.5; margin-bottom:6px;}
+  .loading{text-align:center; color:var(--mut); padding:44px 0; font-size:15px;}
+  footer{color:var(--mut); font-size:12px; text-align:center; padding:20px 16px 34px; line-height:1.6;}
+</style>
+</head>
+<body>
+
+<!-- ================= ACCESO ================= -->
+<section id="view-login" class="login-wrap">
+  <div class="login-card">
+    <div class="login-brand">Rager</div>
+    <div class="login-sub">Televisión en vivo desde tu navegador</div>
+    <form id="login-form" autocomplete="off">
+      <div class="field">
+        <label for="in-user">Usuario de tu línea</label>
+        <input id="in-user" type="text" inputmode="text" autocapitalize="none" spellcheck="false" placeholder="Escribe tu usuario">
+      </div>
+      <div class="field">
+        <label for="in-pass">Contraseña</label>
+        <input id="in-pass" type="password" placeholder="Escribe tu contraseña">
+      </div>
+      <button id="btn-login" class="btn-main" type="submit">ENTRAR</button>
+    </form>
+    <button id="btn-demo" class="btn-demo" type="button">VER DEMO</button>
+    <div id="login-msg" class="msg"></div>
+  </div>
+  <p class="login-note">Usa el mismo usuario y contraseña de tu línea Rager. Tus datos solo se usan para conectar con el servidor de señales; no se guardan en esta página.</p>
+</section>
+
+<!-- ================= APP ================= -->
+<div id="view-app" class="hidden">
+  <header class="top">
+    <div class="brand">Rager</div>
+    <span id="demo-badge" class="badge-demo hidden">MODO DEMO</span>
+    <div class="top-right">
+      <span id="who" class="who"></span>
+      <button id="btn-logout" class="btn-ghost" type="button">Salir</button>
+    </div>
+  </header>
+
+  <div id="player-zone" class="player-zone hidden">
+    <div class="player-bar">
+      <button id="btn-back" class="btn-ghost" type="button">← Volver</button>
+      <div style="min-width:0;">
+        <div id="player-name" class="player-name"></div>
+        <div id="player-cat" class="player-cat"></div>
+      </div>
+    </div>
+    <div class="video-box">
+      <video id="video" controls playsinline></video>
+    </div>
+    <div id="player-err" class="player-err"></div>
+  </div>
+
+  <main>
+    <div id="demo-banner" class="demo-banner hidden">Estás en el <b>modo demo</b>: estas son señales públicas de demostración para que veas cómo funciona la página. Para ver tus canales reales, sal y entra con tu usuario y contraseña.</div>
+    <div class="search-row">
+      <input id="in-search" type="search" placeholder="Buscar canal por nombre…" autocomplete="off">
+    </div>
+    <div id="cats" class="cats"></div>
+    <div id="catalog"></div>
+    <div id="loading" class="loading hidden">Cargando canales…</div>
+  </main>
+  <footer>Rager · Televisión en vivo<br>Las señales en vivo dependen de tu conexión a internet.</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============ Configuración ============ */
+  var SERVER = "http://1396.cooteg.ch:2095"; // servidor de señales (preconfigurado y oculto)
+
+  /* ============ Señales públicas de demostración (HTTPS) ============ */
+  var DEMO = [
+    { cat:"Noticias", channels:[
+      { name:"Noticias · Señal de prueba 1", url:"https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" },
+      { name:"Noticias · Señal de prueba 2", url:"https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8" },
+      { name:"Noticias · Señal de prueba 3", url:"https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8" }
+    ]},
+    { cat:"Deportes", channels:[
+      { name:"Deportes · Señal de prueba 1", url:"https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8" },
+      { name:"Deportes · Señal de prueba 2", url:"https://test-streams.mux.dev/pts_shift/master.m3u8" }
+    ]},
+    { cat:"Películas", channels:[
+      { name:"Películas · Señal de prueba 1", url:"https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.mp4/.m3u8" },
+      { name:"Películas · Señal de prueba 2", url:"https://storage.googleapis.com/shaka-demo-assets/angel-one-hls/hls.m3u8" }
+    ]},
+    { cat:"Infantil", channels:[
+      { name:"Infantil · Señal de prueba 1", url:"https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_16x9/bipbop_16x9_variant.m3u8" },
+      { name:"Infantil · Señal de prueba 2", url:"https://test-streams.mux.dev/test_001/stream.m3u8" }
+    ]}
+  ];
+
+  /* ============ Estado ============ */
+  var state = {
+    demo:false, user:"", pass:"",
+    groups:[],            // [{name, channels:[{name, icon, url}]}]
+    activeCat:"__all__", query:""
+  };
+  var hls = null;
+
+  /* ============ Utilidades ============ */
+  function $(id){ return document.getElementById(id); }
+  function norm(s){ return (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,""); }
+  function showMsg(kind, text){
+    var m = $("login-msg");
+    m.className = "msg " + kind;
+    m.textContent = text;
+  }
+  function clearMsg(){ var m = $("login-msg"); m.className = "msg"; m.textContent=""; }
+  var MSG_BLOCKED = "El navegador bloqueó la conexión con el servidor de señales. Esta página debe abrirse desde su dirección HTTP definitiva para que el acceso con tu línea funcione; mientras tanto, puedes entrar con el botón VER DEMO.";
+
+  /* ============ Vistas ============ */
+  function showApp(){
+    $("view-login").classList.add("hidden");
+    $("view-app").classList.remove("hidden");
+    $("demo-badge").classList.toggle("hidden", !state.demo);
+    $("demo-banner").classList.toggle("hidden", !state.demo);
+    $("who").textContent = state.demo ? "Demostración" : state.user;
+    renderCats(); renderCatalog();
+  }
+  function showLogin(){
+    stopPlayback();
+    $("view-app").classList.add("hidden");
+    $("view-login").classList.remove("hidden");
+  }
+
+  /* ============ Reproductor ============ */
+  function stopPlayback(){
+    var v = $("video");
+    try{ v.pause(); }catch(e){}
+    if(hls){ try{ hls.destroy(); }catch(e){} hls = null; }
+    v.removeAttribute("src");
+    try{ v.load(); }catch(e){}
+    $("player-zone").classList.add("hidden");
+    var pe = $("player-err"); pe.className = "player-err"; pe.textContent = "";
+  }
+  function playChannel(ch, catName){
+    stopPlayback();
+    $("player-zone").classList.remove("hidden");
+    $("player-name").textContent = ch.name;
+    $("player-cat").textContent = catName || "";
+    var v = $("video");
+    var errBox = $("player-err");
+    function fail(msg){
+      errBox.textContent = msg;
+      errBox.className = "player-err show";
+    }
+    if(v.canPlayType("application/vnd.apple.mpegurl")){
+      v.src = ch.url;
+      v.play().catch(function(){});
+    } else if(window.Hls && Hls.isSupported()){
+      hls = new Hls({ maxBufferLength: 30 });
+      hls.loadSource(ch.url);
+      hls.attachMedia(v);
+      hls.on(Hls.Events.MANIFEST_PARSED, function(){ v.play().catch(function(){}); });
+      hls.on(Hls.Events.ERROR, function(ev, data){
+        if(data && data.fatal){
+          fail(state.demo
+            ? "Esta señal de demostración no respondió. Prueba con otra del catálogo."
+            : "El navegador bloqueó la señal de este canal. Esta página debe abrirse desde su dirección HTTP definitiva para reproducir tus canales.");
+        }
+      });
+    } else {
+      fail("Tu navegador no puede reproducir este tipo de señal. Prueba con un navegador actualizado (Chrome, Edge, Firefox o Safari).");
+    }
+    window.scrollTo({ top:0, behavior:"smooth" });
+  }
+
+  /* ============ Catálogo ============ */
+  function renderCats(){
+    var box = $("cats"); box.innerHTML = "";
+    var all = document.createElement("button");
+    all.type = "button"; all.className = "chip" + (state.activeCat === "__all__" ? " on" : "");
+    all.textContent = "Todas";
+    all.onclick = function(){ state.activeCat = "__all__"; renderCats(); renderCatalog(); };
+    box.appendChild(all);
+    state.groups.forEach(function(g){
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "chip" + (state.activeCat === g.name ? " on" : "");
+      b.textContent = g.name;
+      b.onclick = function(){ state.activeCat = g.name; renderCats(); renderCatalog(); };
+      box.appendChild(b);
+    });
+  }
+  function renderCatalog(){
+    var box = $("catalog"); box.innerHTML = "";
+    var q = norm(state.query);
+    var any = false;
+    state.groups.forEach(function(g){
+      if(state.activeCat !== "__all__" && state.activeCat !== g.name) return;
+      var list = g.channels.filter(function(c){ return !q || norm(c.name).indexOf(q) >= 0; });
+      if(!list.length) return;
+      any = true;
+      var block = document.createElement("div"); block.className = "cat-block";
+      var t = document.createElement("div"); t.className = "cat-title";
+      t.textContent = g.name;
+      var cnt = document.createElement("span"); cnt.textContent = list.length + " canales";
+      t.appendChild(cnt); block.appendChild(t);
+      var grid = document.createElement("div"); grid.className = "grid";
+      list.forEach(function(c){
+        var card = document.createElement("button");
+        card.type = "button"; card.className = "card";
+        var logo = document.createElement("div"); logo.className = "logo";
+        if(c.icon){
+          var img = document.createElement("img");
+          img.src = c.icon; img.alt = ""; img.loading = "lazy";
+          img.onerror = function(){ logo.innerHTML = '<div class="nologo">' + (c.name||"R").trim().charAt(0).toUpperCase() + "</div>"; };
+          logo.appendChild(img);
+        } else {
+          logo.innerHTML = '<div class="nologo">' + (c.name||"R").trim().charAt(0).toUpperCase() + "</div>";
+        }
+        var nm = document.createElement("div"); nm.className = "name"; nm.textContent = c.name;
+        var pl = document.createElement("div"); pl.className = "play"; pl.textContent = "▶ Ver ahora";
+        card.appendChild(logo); card.appendChild(nm); card.appendChild(pl);
+        card.onclick = function(){ playChannel(c, g.name); };
+        grid.appendChild(card);
+      });
+      block.appendChild(grid);
+      box.appendChild(block);
+    });
+    if(!any){
+      var d = document.createElement("div"); d.className = "empty";
+      d.textContent = q ? ("Sin resultados para «" + state.query + "».") : "No hay canales para mostrar.";
+      box.appendChild(d);
+    }
+  }
+
+  /* ============ API Xtream ============ */
+  function api(action, extra){
+    var url = SERVER + "/player_api.php?username=" + encodeURIComponent(state.user) +
+              "&password=" + encodeURIComponent(state.pass) + "&action=" + action + (extra || "");
+    return fetch(url).then(function(r){
+      if(!r.ok) throw new Error("http " + r.status);
+      return r.json();
+    });
+  }
+  function streamUrl(id){ return SERVER + "/live/" + encodeURIComponent(state.user) + "/" + encodeURIComponent(state.pass) + "/" + id + ".m3u8"; }
+
+  function loadRealCatalog(){
+    $("loading").classList.remove("hidden");
+    $("catalog").innerHTML = ""; $("cats").innerHTML = "";
+    return Promise.all([ api("get_live_categories"), api("get_live_streams") ])
+      .then(function(res){
+        var cats = Array.isArray(res[0]) ? res[0] : [];
+        var streams = Array.isArray(res[1]) ? res[1] : [];
+        var byCat = {};
+        cats.forEach(function(c){ byCat[String(c.category_id)] = c.category_name || "Sin categoría"; });
+        var map = {}, order = [];
+        streams.forEach(function(s){
+          var cid = String(s.category_id);
+          var cname = byCat[cid] || "Otros";
+          if(!map[cname]){ map[cname] = []; order.push(cname); }
+          map[cname].push({ name: s.name || ("Canal " + s.stream_id), icon: s.stream_icon || "", url: streamUrl(s.stream_id) });
+        });
+        state.groups = order.map(function(n){ return { name:n, channels:map[n] }; });
+        state.activeCat = "__all__";
+        $("loading").classList.add("hidden");
+        renderCats(); renderCatalog();
+      })
+      .catch(function(){
+        $("loading").classList.add("hidden");
+        showLogin();
+        showMsg("err", MSG_BLOCKED);
+      });
+  }
+
+  /* ============ Eventos ============ */
+  $("login-form").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    clearMsg();
+    var u = $("in-user").value.trim();
+    var p = $("in-pass").value;
+    if(!u || !p){ showMsg("err", "Escribe tu usuario y tu contraseña para entrar."); return; }
+    state.user = u; state.pass = p; state.demo = false;
+    var btn = $("btn-login");
+    btn.disabled = true; btn.textContent = "Conectando…";
+    api("")
+      .then(function(data){
+        btn.disabled = false; btn.textContent = "ENTRAR";
+        if(data && data.user_info && Number(data.user_info.auth) === 1){
+          try{
+            sessionStorage.setItem("rager_u", state.user);
+            sessionStorage.setItem("rager_p", state.pass);
+          }catch(e){}
+          showApp();
+          loadRealCatalog();
+        } else {
+          showMsg("err", "Usuario o contraseña incorrectos. Revisa los datos de tu línea e inténtalo de nuevo.");
+        }
+      })
+      .catch(function(){
+        btn.disabled = false; btn.textContent = "ENTRAR";
+        showMsg("err", MSG_BLOCKED);
+      });
+  });
+
+  $("btn-demo").addEventListener("click", function(){
+    clearMsg();
+    state.demo = true; state.user = ""; state.pass = "";
+    state.groups = DEMO.map(function(g){
+      return { name: g.cat, channels: g.channels.map(function(c){ return { name:c.name, icon:"", url:c.url }; }) };
+    });
+    state.activeCat = "__all__"; state.query = ""; $("in-search").value = "";
+    showApp();
+  });
+
+  $("btn-logout").addEventListener("click", function(){
+    state.user = ""; state.pass = ""; state.demo = false; state.groups = [];
+    try{ sessionStorage.removeItem("rager_u"); sessionStorage.removeItem("rager_p"); }catch(e){}
+    $("in-pass").value = "";
+    showLogin();
+  });
+
+  $("btn-back").addEventListener("click", function(){ stopPlayback(); });
+  $("in-search").addEventListener("input", function(){ state.query = this.value; renderCatalog(); });
+
+  /* ============ Sesión recordada en la pestaña ============ */
+  try{
+    var su = sessionStorage.getItem("rager_u"), sp = sessionStorage.getItem("rager_p");
+    if(su && sp){
+      state.user = su; state.pass = sp; state.demo = false;
+      showApp();
+      loadRealCatalog();
+    }
+  }catch(e){}
+})();
+</script>
+</body>
+</html>

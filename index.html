@@ -180,13 +180,13 @@
   .search-row{display:flex; gap:10px; padding:14px var(--pad) 4px; flex-wrap:wrap;}
   .search-row input{flex:1; min-width:200px; background:var(--panel); border:1px solid var(--line); border-radius:10px; color:var(--txt); padding:12px 14px; font-size:16px; outline:none;}
   .search-row input:focus{border-color:var(--red);}
-  .row-block{margin-top:22px; content-visibility:auto; contain-intrinsic-size:auto 300px;}
+  .row-block{margin-top:22px;}
   .row-title{font-size:var(--row-title); font-weight:700; padding:0 var(--pad); margin-bottom:12px;}
   /* Fila «Top 10 semanal» resaltada en dorado (pedido de Sergio): título
      ámbar y banda con tinte dorado suave sobre la estética oscura. */
   .row-block.top10{margin-top:26px; padding:14px 0 8px; background:linear-gradient(180deg, rgba(255,193,7,.13), rgba(255,193,7,.04) 65%, rgba(255,193,7,0)); border-top:2px solid rgba(255,193,7,.6); border-radius:0 0 16px 16px;}
   .row-block.top10 .row-title{color:var(--amber); letter-spacing:.4px;}
-  .row-scroll{display:flex; gap:12px; overflow-x:auto; padding:4px var(--pad) 10px; scrollbar-width:thin; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain;}
+  .row-scroll{display:flex; gap:12px; overflow-x:auto; padding:4px var(--pad) 10px; scrollbar-width:thin; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; touch-action:pan-x;}
   .row-scroll.lazy-ch{min-height:calc(var(--ch-h) + 14px);}
   .row-scroll.lazy-po{min-height:calc(var(--po-w) * 1.5 + 54px);}
   .row-scroll::-webkit-scrollbar{height:6px;}
@@ -1270,6 +1270,17 @@
     if(u.indexOf("image.tmdb.org") >= 0) return u.replace(/\/t\/p\/[^\/]+\//, "/t/p/w342/");
     return u;
   }
+  /* Pide y decodifica ya las imágenes de una fila recién construida,
+     para que ninguna se decodifique en pleno deslizamiento lateral. */
+  function preDecodeImgs(root){
+    var imgs = root.querySelectorAll("img");
+    for(var i = 0; i < imgs.length; i++){
+      try {
+        imgs[i].loading = "eager";
+        if(imgs[i].decode) imgs[i].decode().catch(function(){});
+      } catch(e){}
+    }
+  }
   /* Filas diferidas: las filas de categorías ya no se construyen todas
      de golpe (cientos de tarjetas e imágenes trababan el desplazamiento
      en el teléfono). Se crea solo el título con un hueco de la altura
@@ -1308,6 +1319,11 @@
       sc.classList.remove("lazy-po"); sc.classList.remove("lazy-ch");
       buildCards().forEach(function(c){ sc.appendChild(c); });
       if(onMore) sc.appendChild(moreCard(onMore, poster));
+      /* Todas las imágenes de la fila se piden y decodifican AHORA
+         (la fila ya está cerca de la pantalla), para que al deslizar
+         de lado no haya que decodificar ninguna en pleno gesto:
+         eso era lo que trababa el deslizamiento en el teléfono. */
+      preDecodeImgs(sc);
     };
     var ob = ensureRowObserver();
     if(ob){ rowBuilders.set(block, fill); ob.observe(block); }
@@ -1345,6 +1361,7 @@
     sc.className = "row-scroll";
     cards.forEach(function(c){ sc.appendChild(c); });
     if(onMore) sc.appendChild(moreCard(onMore, false));
+    preDecodeImgs(sc);
     block.appendChild(t); block.appendChild(sc);
     return block;
   }
@@ -1380,6 +1397,7 @@
     sc.className = "row-scroll";
     cards.forEach(function(c){ sc.appendChild(c); });
     if(onMore) sc.appendChild(moreCard(onMore, true));
+    preDecodeImgs(sc);
     block.appendChild(t); block.appendChild(sc);
     return block;
   }

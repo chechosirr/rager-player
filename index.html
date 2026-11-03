@@ -1136,7 +1136,14 @@
   /* ================================================================
      Panel de inicio: escaparate de portadas (rota cada 8 s)
      ================================================================ */
-  var bdTimer = null, bdIndex = 0, bdItems = [], bdFlip = false;
+  var bdTimer = null, bdIndex = 0, bdItems = [], bdFlip = false, bdHour = -1;
+  function hourSeed(){ return Math.floor(Date.now() / 3600000); }
+  function seededPick(arr, n, seed){
+    var a = arr.slice(), s = (seed >>> 0) || 1;
+    function rnd(){ s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }
+    for(var i = a.length - 1; i > 0; i--){ var j = Math.floor(rnd() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a.slice(0, n);
+  }
   function showcaseItems(){
     // Devuelve [{img, title, sub}] para el fondo del panel.
     if(S.demo){
@@ -1147,15 +1154,27 @@
       ];
       return demo.map(function(d){ return { img: DEMO_COVERS[d.key], title: d.key, sub: d.sub }; });
     }
+    var cands = [];
     if(S.movies && S.movies.items){
-      var withPoster = S.movies.items.filter(function(m){ return m.icon && /^https?:\/\//i.test(m.icon); }).slice(0, 6);
-      var catName = {};
-      S.movies.cats.forEach(function(c){ catName[String(c.id)] = c.name; });
-      return withPoster.map(function(m){
-        return { img: m.icon, title: m.name, sub: (m.extra ? m.extra + " · " : "") + (catName[String(m.categoryId)] || "") };
+      var mc = {};
+      S.movies.cats.forEach(function(c){ mc[String(c.id)] = c.name; });
+      S.movies.items.forEach(function(m){
+        if(m.icon && /^https?:\/\//i.test(m.icon))
+          cands.push({ img: m.icon, title: m.name, kick: "PELÍCULA DESTACADA", sub: (m.extra ? m.extra + " · " : "") + (mc[String(m.categoryId)] || "") });
       });
     }
-    return [];
+    if(S.series && S.series.items){
+      var sc = {};
+      (S.series.cats || []).forEach(function(c){ sc[String(c.id)] = c.name; });
+      S.series.items.forEach(function(s){
+        var img = s.cover || s.icon;
+        if(img && /^https?:\/\//i.test(img))
+          cands.push({ img: img, title: s.name, kick: "SERIE DESTACADA", sub: (s.extra ? s.extra + " · " : "") + (sc[String(s.categoryId)] || "") });
+      });
+    }
+    // La SELECCIÓN rota cada hora (pedido de Sergio): mezcla con la hora
+    // como semilla; dentro de la hora, el fondo cambia cada 8 s.
+    return seededPick(cands, 6, hourSeed());
   }
   function applyBackdrop(item){
     var a = $("bd-a"), b = $("bd-b");
@@ -1172,7 +1191,7 @@
     feat.style.opacity = "0";
     setTimeout(function(){
       if(item){
-        $("feat-kick").textContent = "PELÍCULA DESTACADA";
+        $("feat-kick").textContent = item.kick || "PELÍCULA DESTACADA";
         $("feat-title").textContent = item.title;
         $("feat-sub").textContent = item.sub || "";
         feat.style.opacity = "1";
@@ -1184,15 +1203,21 @@
   }
   function startBackdrop(){
     stopBackdrop();
+    bdHour = hourSeed();
     bdItems = showcaseItems();
     bdIndex = 0;
     applyBackdrop(bdItems.length ? bdItems[0] : null);
-    if(bdItems.length > 1){
-      bdTimer = setInterval(function(){
+    bdTimer = setInterval(function(){
+      if(hourSeed() !== bdHour || bdItems.length === 0){
+        // Cambió la hora (o aún no había datos): nueva selección.
+        bdHour = hourSeed();
+        bdItems = showcaseItems();
+        bdIndex = 0;
+      } else if(bdItems.length > 1){
         bdIndex = (bdIndex + 1) % bdItems.length;
-        applyBackdrop(bdItems[bdIndex]);
-      }, 8000);
-    }
+      }
+      applyBackdrop(bdItems.length ? bdItems[bdIndex] : null);
+    }, 8000);
   }
   function stopBackdrop(){ if(bdTimer){ clearInterval(bdTimer); bdTimer = null; } }
 

@@ -405,8 +405,7 @@
       <div id="player-name" class="player-name"></div>
       <div id="player-sub" class="player-sub"></div>
     </div>
-    <button id="btn-pip" class="btn-ghost" type="button" style="margin-left:auto; flex:none;">▱ Miniatura</button>
-    <button id="btn-fs" class="btn-ghost" type="button" style="flex:none;">⛶ Horizontal</button>
+    <button id="btn-fs" class="btn-ghost" type="button" style="margin-left:auto; flex:none;">⛶ Horizontal</button>
   </div>
   <div class="video-box" id="video-box">
     <video id="video" controls playsinline></video>
@@ -2020,21 +2019,25 @@
   $("grid-filter").addEventListener("input", function(){ renderGridBody(this.value); });
   $("ep-back").addEventListener("click", function(){ openSection("series"); });
   $("btn-pback").addEventListener("click", function(){ closePlayer(); });
-  $("btn-pip").addEventListener("click", function(){
+  // Miniatura AUTOMÁTICA (pedido de Sergio): sin botón; al salir de la
+  // página con el video reproduciendo, se intenta dejarlo flotando (PiP).
+  function autoPip(){
     var v = $("video");
+    if (!v || v.paused || v.ended) return;
     try {
-      if (document.pictureInPictureElement) { document.exitPictureInPicture(); return; }
-      if (v.webkitSetPresentationMode) {
-        var mode = v.webkitPresentationMode || "inline";
-        v.webkitSetPresentationMode(mode === "picture-in-picture" ? "inline" : "picture-in-picture");
+      if (document.pictureInPictureElement) return;
+      if (v.webkitSetPresentationMode && (v.webkitPresentationMode || "inline") === "inline") {
+        v.webkitSetPresentationMode("picture-in-picture");
         return;
       }
-      if (v.requestPictureInPicture) {
+      if (v.requestPictureInPicture && document.pictureInPictureEnabled) {
         var pr = v.requestPictureInPicture();
         if (pr && pr.catch) pr.catch(function(){});
       }
     } catch(e) {}
-  });
+  }
+  document.addEventListener("visibilitychange", function(){ if (document.hidden) autoPip(); });
+  window.addEventListener("pagehide", autoPip);
   $("btn-fs").addEventListener("click", function(){
     var v = $("video"), box = $("video-box");
     if (document.fullscreenElement || document.webkitFullscreenElement) {
@@ -2049,12 +2052,15 @@
         }
       } catch(e) {}
     }
+    function nativeFs(){
+      if (v.webkitEnterFullscreen) { try { v.webkitEnterFullscreen(); } catch(e) {} }
+    }
     if (box.requestFullscreen) {
       var p = box.requestFullscreen();
-      if (p && p.then) p.then(lockLand).catch(function(){});
+      if (p && p.then) p.then(lockLand).catch(nativeFs);
       else lockLand();
-    } else if (v.webkitEnterFullscreen) {
-      try { v.webkitEnterFullscreen(); } catch(e) {}
+    } else {
+      nativeFs();
     }
   });
   videoEl().addEventListener("pause", function(){ saveVodPosition(); });

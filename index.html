@@ -252,8 +252,11 @@
   .video-box:fullscreen video{width:100%; height:100%;}
   .video-box:-webkit-full-screen{background:#000;}
   .video-box:-webkit-full-screen video{width:100%; height:100%;}
+  /* Horizontal FORZADO (iPhone): la caja del video se gira en la página;
+     funciona aunque el teléfono tenga el bloqueo de rotación activado. */
+  .video-box.force-land{position:fixed; z-index:400; background:#000; width:100vh; height:100vw; left:50%; top:50%; transform:translate(-50%,-50%) rotate(90deg);}
   #video{width:100%; height:100%; background:#000;}
-  #dial{position:absolute; top:18px; right:22px; background:rgba(0,0,0,.72); border:1px solid var(--amber); color:var(--amber); font-size:34px; font-weight:800; padding:6px 18px; border-radius:12px; letter-spacing:2px; display:none; z-index:3;}
+  #dial{position:absolute; pointer-events:none; top:18px; right:22px; background:rgba(0,0,0,.72); border:1px solid var(--amber); color:var(--amber); font-size:34px; font-weight:800; padding:6px 18px; border-radius:12px; letter-spacing:2px; display:none; z-index:3;}
   .player-err{margin:0; padding:12px 18px; background:#3a1416; color:#ffb4ab; font-size:14px; line-height:1.5; display:none;}
   .player-err.show{display:block;}
   /* Marca «RAGER» estilo Amazon (pedido de Sergio): redondeada y gruesa,
@@ -859,6 +862,22 @@
     return isNaN(f) ? 0 : f;
   }
   function liveUrl(sid){ return SERVER + "/live/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + sid + ".m3u8"; }
+  var REMUX_EXTS = { mkv: 1, avi: 1, mpg: 1, mpeg: 1, ts: 1, webm: 1 };
+  function vodUrl(kind, id, ext){
+    var e = (ext || "mp4").toLowerCase();
+    var base = kind === "movie" ? movieUrl(id, ext) : seriesUrl(id, ext);
+    if(!REMUX_EXTS[e]) return base;
+    // Formato que el navegador no reproduce tal cual: el puente lo
+    // convierte a MP4 al vuelo. Si hay posición guardada, la conversión
+    // empieza en ese punto (?ss=) y el reproductor ya no busca de nuevo.
+    var u = SERVER + "/remux" + base.slice(SERVER.length);
+    if(P.resumePos && P.resumePos > 5){
+      P.bakedSeek = true;
+      P.seekBase = Math.floor(P.resumePos);
+      u += "?ss=" + P.seekBase;
+    }
+    return u;
+  }
   function movieUrl(id, ext){ return SERVER + "/movie/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + id + "." + (ext || "mp4"); }
   function seriesUrl(epId, ext){ return SERVER + "/series/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + encodeURIComponent(epId) + "." + (ext || "mp4"); }
 
@@ -1712,7 +1731,8 @@
     channel: null,                   // canal en vivo actual
     movie: null, episode: null, seriesItem: null,
     resumePos: 0, returnTarget: "section:live",
-    dialStr: "", dialTimer: null, saveTimer: null, triedAlt: false
+    dialStr: "", dialTimer: null, saveTimer: null, triedAlt: false,
+    bakedSeek: false, seekBase: 0
   };
   function videoEl(){ return $("video"); }
   function stopPlayer(){
@@ -1724,7 +1744,9 @@
     if(P.saveTimer){ clearInterval(P.saveTimer); P.saveTimer = null; }
     if(P.dialTimer){ clearTimeout(P.dialTimer); P.dialTimer = null; }
     P.dialStr = "";
+    P.bakedSeek = false; P.seekBase = 0;
     $("dial").style.display = "none";
+    $("video-box").classList.remove("force-land");
     var pe = $("player-err"); pe.className = "player-err"; pe.textContent = "";
     P.open = false;
   }
@@ -1747,13 +1769,14 @@
         : MSG_BLOCKED_SHORT);
     }
     var isHls = /\.m3u8($|\?)/i.test(url);
+    var isRemux = url.indexOf("/remux/") >= 0;
     if(isHls && !(v.canPlayType("application/vnd.apple.mpegurl")) && window.Hls && Hls.isSupported()){
       hls = new Hls({ maxBufferLength: 30 });
       hls.loadSource(url);
       hls.attachMedia(v);
       hls.on(Hls.Events.MANIFEST_PARSED, function(){ tryResume(); v.play().catch(function(){}); });
       hls.on(Hls.Events.ERROR, function(ev, data){ if(data && data.fatal) onFatal(); });
-    } else if(isHls || v.canPlayType("application/vnd.apple.mpegurl") || /\.(mp4|m4v|mov|webm)($|\?)/i.test(url)){
+    } else if(isHls || isRemux || v.canPlayType("application/vnd.apple.mpegurl") || /\.(mp4|m4v|mov|webm)($|\?)/i.test(url)){
       v.src = url;
       v.addEventListener("loadedmetadata", function(){ tryResume(); }, { once: true });
       v.addEventListener("error", function(){ onFatal(); }, { once: true });
@@ -1764,6 +1787,7 @@
   }
   function tryResume(){
     var v = videoEl();
+    if(P.bakedSeek){ P.resumePos = 0; return; }
     if(P.resumePos > 0 && isFinite(v.duration) && v.duration > 0 && P.resumePos < v.duration - 5){
       try{ v.currentTime = P.resumePos; }catch(e){}
     }
@@ -1832,9 +1856,9 @@
     $("player-name").textContent = m.name;
     $("player-sub").textContent = m.extra || "";
     showPlayerUI();
-    var url = S.demo ? demoPlayUrl(m.streamId) : movieUrl(m.streamId, m.extension);
-    var alt = null;
-    if(!S.demo && (m.extension || "mp4").toLowerCase() !== "m3u8") alt = movieUrl(m.streamId, "m3u8");
+    var url, alt = null;
+    if(S.demo){ url = demoPlayUrl(m.streamId); }
+    else { url = vodUrl("movie", m.streamId, m.extension); }
     attachSource(url, alt);
     startSaveTimer();
   }
@@ -1855,9 +1879,9 @@
     $("player-sub").textContent = "T" + ep.season + " · E" + ep.number + (ep.title ? " — " + ep.title : "");
     showPlayerUI();
     var epNumId = parseInt(ep.id, 10);
-    var url = S.demo ? demoPlayUrl(isNaN(epNumId) ? 0 : epNumId) : seriesUrl(ep.id, ep.extension);
-    var alt = null;
-    if(!S.demo && (ep.extension || "mp4").toLowerCase() !== "m3u8") alt = seriesUrl(ep.id, "m3u8");
+    var url, alt = null;
+    if(S.demo){ url = demoPlayUrl(isNaN(epNumId) ? 0 : epNumId); }
+    else { url = vodUrl("series", ep.id, ep.extension); }
     attachSource(url, alt);
     startSaveTimer();
   }
@@ -1879,7 +1903,7 @@
   function saveVodPosition(){
     if(!P.open) return;
     var v = videoEl();
-    var pos = v.currentTime || 0;
+    var pos = (v.currentTime || 0) + (P.bakedSeek ? (P.seekBase || 0) : 0);
     if(P.kind === "movie" && P.movie && pos > 0){
       updateRecentPos("movies", String(P.movie.streamId), function(e){ return String(e.sid); }, pos, v.duration);
     } else if(P.kind === "episode" && P.episode && pos > 0){
@@ -2065,8 +2089,18 @@
   window.addEventListener("pagehide", autoPip);
   $("btn-fs").addEventListener("click", function(){
     var v = $("video"), box = $("video-box");
+    if (box.classList.contains("force-land")) { box.classList.remove("force-land"); return; }
     if (document.fullscreenElement || document.webkitFullscreenElement) {
       if (document.exitFullscreen) document.exitFullscreen();
+      return;
+    }
+    var canFs = typeof box.requestFullscreen === "function";
+    if (/iPhone|iPod/i.test(navigator.userAgent) || !canFs) {
+      // iPhone: ninguna página puede girar el sistema, así que se gira la
+      // caja del video dentro de la página (fuerza el horizontal aunque el
+      // teléfono tenga bloqueada la rotación). Si ya está apaisado, no hace
+      // falta girar nada.
+      if (window.innerWidth < window.innerHeight) box.classList.add("force-land");
       return;
     }
     function lockLand(){
@@ -2077,16 +2111,14 @@
         }
       } catch(e) {}
     }
-    function nativeFs(){
-      if (v.webkitEnterFullscreen) { try { v.webkitEnterFullscreen(); } catch(e) {} }
-    }
-    if (box.requestFullscreen) {
-      var p = box.requestFullscreen();
-      if (p && p.then) p.then(lockLand).catch(nativeFs);
-      else lockLand();
-    } else {
-      nativeFs();
-    }
+    var p = box.requestFullscreen();
+    if (p && p.then) p.then(lockLand).catch(function(){});
+    else lockLand();
+  });
+  window.addEventListener("orientationchange", function(){
+    setTimeout(function(){
+      if (window.innerWidth >= window.innerHeight) $("video-box").classList.remove("force-land");
+    }, 350);
   });
   videoEl().addEventListener("pause", function(){ saveVodPosition(); });
   videoEl().addEventListener("ended", function(){

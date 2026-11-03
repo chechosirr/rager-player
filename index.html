@@ -248,6 +248,10 @@
   .player-name{font-weight:700; font-size:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .player-sub{color:var(--mut); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .video-box{flex:1; display:flex; align-items:center; justify-content:center; min-height:0; position:relative;}
+  .video-box:fullscreen{background:#000;}
+  .video-box:fullscreen video{width:100%; height:100%;}
+  .video-box:-webkit-full-screen{background:#000;}
+  .video-box:-webkit-full-screen video{width:100%; height:100%;}
   #video{width:100%; height:100%; background:#000;}
   #dial{position:absolute; top:18px; right:22px; background:rgba(0,0,0,.72); border:1px solid var(--amber); color:var(--amber); font-size:34px; font-weight:800; padding:6px 18px; border-radius:12px; letter-spacing:2px; display:none; z-index:3;}
   .player-err{margin:0; padding:12px 18px; background:#3a1416; color:#ffb4ab; font-size:14px; line-height:1.5; display:none;}
@@ -401,8 +405,9 @@
       <div id="player-name" class="player-name"></div>
       <div id="player-sub" class="player-sub"></div>
     </div>
+    <button id="btn-fs" class="btn-ghost" type="button" style="margin-left:auto; flex:none;">⛶ Horizontal</button>
   </div>
-  <div class="video-box">
+  <div class="video-box" id="video-box">
     <video id="video" controls playsinline></video>
     <div id="dial"></div>
   </div>
@@ -2014,6 +2019,28 @@
   $("grid-filter").addEventListener("input", function(){ renderGridBody(this.value); });
   $("ep-back").addEventListener("click", function(){ openSection("series"); });
   $("btn-pback").addEventListener("click", function(){ closePlayer(); });
+  $("btn-fs").addEventListener("click", function(){
+    var v = $("video"), box = $("video-box");
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      if (document.exitFullscreen) document.exitFullscreen();
+      return;
+    }
+    function lockLand(){
+      try {
+        if (screen.orientation && screen.orientation.lock) {
+          var pr = screen.orientation.lock("landscape");
+          if (pr && pr.catch) pr.catch(function(){});
+        }
+      } catch(e) {}
+    }
+    if (box.requestFullscreen) {
+      var p = box.requestFullscreen();
+      if (p && p.then) p.then(lockLand).catch(function(){});
+      else lockLand();
+    } else if (v.webkitEnterFullscreen) {
+      try { v.webkitEnterFullscreen(); } catch(e) {}
+    }
+  });
   videoEl().addEventListener("pause", function(){ saveVodPosition(); });
   videoEl().addEventListener("ended", function(){
     // Al terminar, el contenido sale de «Recientes» (como en la app).

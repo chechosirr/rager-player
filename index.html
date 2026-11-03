@@ -278,11 +278,11 @@
     <form id="login-form" autocomplete="off">
       <div class="field">
         <label for="in-user">Usuario de tu línea</label>
-        <input id="in-user" type="text" autocapitalize="none" spellcheck="false" placeholder="Escribe tu usuario">
+        <input id="in-user" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" placeholder="Escribe tu usuario">
       </div>
       <div class="field">
         <label for="in-pass">Contraseña</label>
-        <input id="in-pass" type="password" placeholder="Escribe tu contraseña">
+        <input id="in-pass" type="password" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="current-password" placeholder="Escribe tu contraseña">
       </div>
       <button id="btn-login" class="btn-main" type="submit">ENTRAR</button>
     </form>
@@ -464,6 +464,8 @@
 
   var MSG_BLOCKED = "El navegador bloqueó la conexión con el servidor de señales. Esta página debe abrirse desde su dirección HTTP definitiva para que el acceso con tu línea funcione; mientras tanto, puedes entrar con el botón VER DEMO.";
   var MSG_BLOCKED_SHORT = "El navegador bloqueó la señal. Esta página debe abrirse desde su dirección HTTP definitiva para reproducir tus canales.";
+  var MSG_BAD_CREDENTIALS = "Usuario o contraseña incorrectos. Revisa los datos de tu línea e inténtalo de nuevo.";
+  var MSG_NO_CONNECTION = "No se pudo conectar con el servidor de señales. Comprueba tu conexión e inténtalo de nuevo.";
 
   /* ================================================================
      Utilidades
@@ -841,7 +843,7 @@
     var url = SERVER + "/player_api.php?username=" + encodeURIComponent(S.user) +
               "&password=" + encodeURIComponent(S.pass) + (action ? "&action=" + action : "") + (extra || "");
     return fetch(url).then(function(r){
-      if(!r.ok) throw new Error("http " + r.status);
+      if(!r.ok){ var e = new Error("http " + r.status); e.httpStatus = r.status; throw e; }
       return r.json();
     });
   }
@@ -1890,6 +1892,7 @@
     renderProfiles();
     showView("view-profiles");
   }
+  var lastAuthError = null;   // "credentials" | "network" | null (último intento de acceso)
   function doLogin(u, p, silent){
     S.user = u; S.pass = p; S.demo = false;
     var btn = $("btn-login");
@@ -1909,15 +1912,20 @@
         }
         S.userInfo = { status: ui.status || "", maxConnections: ui.max_connections || "", expDays: expDays, expText: expText };
         S.live = null; S.movies = null; S.series = null; S.episodesCache = {};
+        lastAuthError = null;
         saveSession();
         enterApp();
         return true;
       }
-      if(!silent) showMsg("err", "Usuario o contraseña incorrectos. Revisa los datos de tu línea e inténtalo de nuevo.");
+      lastAuthError = "credentials";
+      if(!silent) showMsg("err", MSG_BAD_CREDENTIALS);
       return false;
-    }).catch(function(){
+    }).catch(function(err){
       btn.disabled = false; btn.textContent = "ENTRAR";
-      if(!silent) showMsg("err", MSG_BLOCKED);
+      // Respuesta HTTP no-OK (p. ej. 401 del panel) = credenciales no aceptadas;
+      // solo un fallo de red del propio fetch (sin respuesta) = problema de conexión.
+      lastAuthError = (err && err.httpStatus) ? "credentials" : "network";
+      if(!silent) showMsg("err", lastAuthError === "credentials" ? MSG_BAD_CREDENTIALS : MSG_NO_CONNECTION);
       return false;
     });
   }
@@ -2110,7 +2118,7 @@
     if(sess && sess.u && sess.p){
       $("in-user").value = sess.u;
       doLogin(sess.u, sess.p, true).then(function(ok){
-        if(!ok){ clearSession(); showView("view-login"); showMsg("info", MSG_BLOCKED); }
+        if(!ok){ clearSession(); showView("view-login"); showMsg("info", lastAuthError === "credentials" ? MSG_BAD_CREDENTIALS : MSG_NO_CONNECTION); }
       });
     } else {
       showView("view-login");

@@ -180,13 +180,15 @@
   .search-row{display:flex; gap:10px; padding:14px var(--pad) 4px; flex-wrap:wrap;}
   .search-row input{flex:1; min-width:200px; background:var(--panel); border:1px solid var(--line); border-radius:10px; color:var(--txt); padding:12px 14px; font-size:16px; outline:none;}
   .search-row input:focus{border-color:var(--red);}
-  .row-block{margin-top:22px;}
+  .row-block{margin-top:22px; content-visibility:auto; contain-intrinsic-size:auto 300px;}
   .row-title{font-size:var(--row-title); font-weight:700; padding:0 var(--pad); margin-bottom:12px;}
   /* Fila «Top 10 semanal» resaltada en dorado (pedido de Sergio): título
      ámbar y banda con tinte dorado suave sobre la estética oscura. */
   .row-block.top10{margin-top:26px; padding:14px 0 8px; background:linear-gradient(180deg, rgba(255,193,7,.13), rgba(255,193,7,.04) 65%, rgba(255,193,7,0)); border-top:2px solid rgba(255,193,7,.6); border-radius:0 0 16px 16px;}
   .row-block.top10 .row-title{color:var(--amber); letter-spacing:.4px;}
-  .row-scroll{display:flex; gap:12px; overflow-x:auto; padding:4px var(--pad) 10px; scrollbar-width:thin;}
+  .row-scroll{display:flex; gap:12px; overflow-x:auto; padding:4px var(--pad) 10px; scrollbar-width:thin; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain;}
+  .row-scroll.lazy-ch{min-height:calc(var(--ch-h) + 14px);}
+  .row-scroll.lazy-po{min-height:calc(var(--po-w) * 1.5 + 54px);}
   .row-scroll::-webkit-scrollbar{height:6px;}
   .row-scroll::-webkit-scrollbar-thumb{background:#33333f; border-radius:3px;}
 
@@ -1261,11 +1263,62 @@
   /* ================================================================
      Tarjetas y filas (formato de la app)
      ================================================================ */
+  /* Los pósters llegan de TMDB en tamaño grande; para las tarjetas
+     basta w342 (nítido en retina y mucho más ligero de decodificar). */
+  function posterSrc(u){
+    if(!u) return u;
+    if(u.indexOf("image.tmdb.org") >= 0) return u.replace(/\/t\/p\/[^\/]+\//, "/t/p/w342/");
+    return u;
+  }
+  /* Filas diferidas: las filas de categorías ya no se construyen todas
+     de golpe (cientos de tarjetas e imágenes trababan el desplazamiento
+     en el teléfono). Se crea solo el título con un hueco de la altura
+     correcta y las tarjetas se construyen cuando la fila está por
+     entrar en pantalla. Top 10 y Recientes se construyen al momento. */
+  var rowObserver = null;
+  var rowBuilders = ("Map" in window) ? new Map() : null;
+  function resetLazyRows(){
+    if(rowObserver){ rowObserver.disconnect(); rowObserver = null; }
+    if(rowBuilders) rowBuilders.clear();
+  }
+  function ensureRowObserver(){
+    if(rowObserver) return rowObserver;
+    if(!("IntersectionObserver" in window) || !rowBuilders) return null;
+    rowObserver = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(!en.isIntersecting) return;
+        var fn = rowBuilders.get(en.target);
+        rowBuilders.delete(en.target);
+        rowObserver.unobserve(en.target);
+        if(fn) fn();
+      });
+    }, { rootMargin: "700px 0px" });
+    return rowObserver;
+  }
+  function lazyRowBlock(title, poster, buildCards, onMore){
+    var block = document.createElement("div");
+    block.className = "row-block";
+    if(title === "Top 10 semanal") block.classList.add("top10");
+    var t = document.createElement("div");
+    t.className = "row-title"; t.textContent = title;
+    var sc = document.createElement("div");
+    sc.className = "row-scroll " + (poster ? "lazy-po" : "lazy-ch");
+    block.appendChild(t); block.appendChild(sc);
+    var fill = function(){
+      sc.classList.remove("lazy-po"); sc.classList.remove("lazy-ch");
+      buildCards().forEach(function(c){ sc.appendChild(c); });
+      if(onMore) sc.appendChild(moreCard(onMore, poster));
+    };
+    var ob = ensureRowObserver();
+    if(ob){ rowBuilders.set(block, fill); ob.observe(block); }
+    else fill();
+    return block;
+  }
   function channelCard(ch, rank){
     var b = document.createElement("button");
     b.type = "button"; b.className = "ch-card";
     var logo = ch.icon
-      ? '<div class="logo"><img src="' + esc(ch.icon) + '" alt="" loading="lazy" onerror="this.parentNode.innerHTML=\'<div class=&quot;nologo&quot;>' + esc((ch.name||"R").trim().charAt(0).toUpperCase()) + '</div>\'"></div>'
+      ? '<div class="logo"><img src="' + esc(ch.icon) + '" alt="" loading="lazy" decoding="async" onerror="this.parentNode.innerHTML=\'<div class=&quot;nologo&quot;>' + esc((ch.name||"R").trim().charAt(0).toUpperCase()) + '</div>\'"></div>'
       : '<div class="logo"><div class="nologo">' + esc((ch.name||"R").trim().charAt(0).toUpperCase()) + "</div></div>";
     b.innerHTML = (rank ? '<div class="chrank">' + rank + "</div>" : "") + logo +
       '<div class="chnum">' + ch.number + "</div>" +
@@ -1300,7 +1353,7 @@
     var b = document.createElement("button");
     b.type = "button"; b.className = "po-card";
     var poster = item.poster
-      ? '<div class="poster"><img src="' + esc(item.poster) + '" alt="" loading="lazy" onerror="this.parentNode.innerHTML=\'<div class=&quot;nopo&quot;>' + esc((item.title||"R").trim().charAt(0).toUpperCase()) + '</div>\'"></div>'
+      ? '<div class="poster"><img src="' + esc(posterSrc(item.poster)) + '" alt="" loading="lazy" decoding="async" onerror="this.parentNode.innerHTML=\'<div class=&quot;nopo&quot;>' + esc((item.title||"R").trim().charAt(0).toUpperCase()) + '</div>\'"></div>'
       : '<div class="poster"><div class="nopo">' + esc((item.title||"R").trim().charAt(0).toUpperCase()) + "</div></div>";
     var html = poster;
     /* El numeral se pinta en la esquina superior izquierda de la portada
@@ -1452,6 +1505,7 @@
     host = host || $("live-rows");
     if(!host) return;
     host.innerHTML = "";
+    resetLazyRows();
     // 1) Top 10 semanal (orden de puesto; sin «Ver más»)
     var top = weeklyTopChannels(S.live.master);
     if(top.length){
@@ -1477,7 +1531,9 @@
       if(!list || !list.length) return;
       if(countryOfCategory(cat.name)) return;   // es un país: vive en «Ver por países»
       (function(catRef, full){
-        host.appendChild(rowBlock(catRef.name, full.slice(0, 20).map(function(ch){ return channelCard(ch); }), function(){
+        host.appendChild(lazyRowBlock(catRef.name, false, function(){
+          return full.slice(0, 20).map(function(ch){ return channelCard(ch); });
+        }, function(){
           openGrid({ kind: "channels", title: catRef.name, items: full });
           S.gridReturn = "live";
         }));
@@ -1489,6 +1545,7 @@
     renderChips();
     var body = $("section-body");
     body.innerHTML = "";
+    resetLazyRows();
     var head = document.createElement("div");
     head.className = "sec-head";
     head.innerHTML = '<button class="btn-ghost" id="btn-countries-back" type="button">← Volver</button>' +
@@ -1502,7 +1559,9 @@
     }
     groups.forEach(function(g){
       (function(grp){
-        body.appendChild(rowBlock(grp.country, grp.channels.slice(0, 20).map(function(ch){ return channelCard(ch); }), function(){
+        body.appendChild(lazyRowBlock(grp.country, false, function(){
+          return grp.channels.slice(0, 20).map(function(ch){ return channelCard(ch); });
+        }, function(){
           openGrid({ kind: "channels", title: grp.country, items: grp.channels });
           S.gridReturn = "countries";
         }));
@@ -1565,6 +1624,7 @@
 
     function buildRows(){
       rowsHost.innerHTML = "";
+      resetLazyRows();
       if(!items.length){
         rowsHost.innerHTML = '<div class="empty">' + (kind === "movies" ? "Sin películas disponibles." : "Sin series disponibles.") + "</div>";
         return;
@@ -1594,17 +1654,18 @@
         var full = byCat[String(cat.id)];
         if(!full || !full.length) return;
         var rotated = dailyRotation(full, (kind === "movies" ? "vod-" : "series-") + cat.id, 20);
-        var cards = rotated.map(function(it){
-          var pi = (kind === "movies") ? moviePosterItem(it) : seriesPosterItem(it);
-          return posterCard(pi, { sub: pi.sub, onClick: pi.onClick });
-        });
-        (function(catRef, fullList){
-          rowsHost.appendChild(posterRowBlock(catRef.name, cards, function(){
+        (function(catRef, fullList, rot){
+          rowsHost.appendChild(lazyRowBlock(catRef.name, true, function(){
+            return rot.map(function(it){
+              var pi = (kind === "movies") ? moviePosterItem(it) : seriesPosterItem(it);
+              return posterCard(pi, { sub: pi.sub, onClick: pi.onClick });
+            });
+          }, function(){
             var gis = fullList.map(function(it){ return (kind === "movies") ? moviePosterItem(it) : seriesPosterItem(it); });
             openGrid({ kind: "posters", title: catRef.name, items: gis });
             S.gridReturn = kind;
           }));
-        })(cat, full);
+        })(cat, full, rotated);
       });
     }
     buildRows();

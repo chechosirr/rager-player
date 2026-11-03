@@ -862,6 +862,20 @@
     return isNaN(f) ? 0 : f;
   }
   function liveUrl(sid){ return SERVER + "/live/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + sid + ".m3u8"; }
+  // Año de estreno desde el nombre («Título (2024)»): la lista de
+  // películas del panel no trae año, pero el nombre suele llevarlo.
+  function nameYear(name){
+    var m = /\((\d{4})\)/.exec(name || "");
+    if(m) return parseInt(m[1], 10) || 0;
+    var all = (name || "").match(/\b(?:19|20)\d{2}\b/g);
+    return all ? (parseInt(all[all.length - 1], 10) || 0) : 0;
+  }
+  // «Últimos 3 años» (pedido de Sergio): el año en curso y los dos
+  // anteriores. Sin año conocido (0) NO cuenta como reciente.
+  function isRecentYear(y){
+    var c = new Date().getFullYear();
+    return y >= c - 2 && y <= c;
+  }
   var REMUX_EXTS = { mkv: 1, avi: 1, mpg: 1, mpeg: 1, ts: 1, webm: 1 };
   function vodUrl(kind, id, ext){
     var e = (ext || "mp4").toLowerCase();
@@ -914,7 +928,7 @@
         var year = o.year || (o.releasedate ? String(o.releasedate).slice(0,4) : "");
         return { streamId: Number(o.stream_id)||0, name: o.name || ("Película " + o.stream_id), icon: o.stream_icon || "",
                  categoryId: String(o.category_id), extension: o.container_extension || "mp4",
-                 extra: year || (o.rating ? String(o.rating) : ""), rating: parseRating(o),
+                 extra: year || (o.rating ? String(o.rating) : ""), year: nameYear(o.name), rating: parseRating(o),
                  added: parseInt(o.added, 10) || 0 };
       }).filter(function(m){ return m.streamId !== 0; });
       S.movies = { cats: cats, items: items };
@@ -928,7 +942,7 @@
       var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: c.category_name || "Sin categoría" }; });
       var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
         return { seriesId: Number(o.series_id)||0, name: o.name || ("Serie " + o.series_id), cover: o.cover || "",
-                 categoryId: String(o.category_id), rating: parseRating(o), added: parseEpochLoose(o.last_modified) };
+                 categoryId: String(o.category_id), year: parseInt(String(o.releaseDate || o.year || "").slice(0, 4), 10) || 0, rating: parseRating(o), added: parseEpochLoose(o.last_modified) };
       }).filter(function(s){ return s.seriesId !== 0; });
       S.series = { cats: cats, items: items };
       return S.series;
@@ -1179,7 +1193,7 @@
       S.movies.cats.forEach(function(c){ mc[String(c.id)] = c.name; });
       S.movies.items.forEach(function(m){
         if(m.icon && /^https?:\/\//i.test(m.icon))
-          cands.push({ img: m.icon, title: m.name, kick: "PELÍCULA DESTACADA", sub: (m.extra ? m.extra + " · " : "") + (mc[String(m.categoryId)] || "") });
+          cands.push({ img: m.icon, title: m.name, kick: "PELÍCULA DESTACADA", y: m.year || 0, sub: (m.extra ? m.extra + " · " : "") + (mc[String(m.categoryId)] || "") });
       });
     }
     if(S.series && S.series.items){
@@ -1188,9 +1202,13 @@
       S.series.items.forEach(function(s){
         var img = s.cover || s.icon;
         if(img && /^https?:\/\//i.test(img))
-          cands.push({ img: img, title: s.name, kick: "SERIE DESTACADA", sub: (s.extra ? s.extra + " · " : "") + (sc[String(s.categoryId)] || "") });
+          cands.push({ img: img, title: s.name, kick: "SERIE DESTACADA", y: s.year || 0, sub: (s.extra ? s.extra + " · " : "") + (sc[String(s.categoryId)] || "") });
       });
     }
+    // El escaparate rota con películas y series de los ÚLTIMOS 3 AÑOS
+    // (pedido de Sergio); si hubiera muy pocas recientes, todo el catálogo.
+    var recentCands = cands.filter(function(c){ return isRecentYear(c.y || 0); });
+    if(recentCands.length >= 3) cands = recentCands;
     // La SELECCIÓN rota cada hora (pedido de Sergio): mezcla con la hora
     // como semilla; dentro de la hora, el fondo cambia cada 8 s.
     return seededPick(cands, 6, hourSeed());
@@ -1509,7 +1527,14 @@
       .map(function(x){ return x.it; });
   }
   function top10Vod(items, sectionKey){
-    var pool = byRatingDesc(items).slice(0, 30);
+    // Bolsa: las mejor valoradas de los ÚLTIMOS 3 AÑOS (pedido de
+    // Sergio); si hubiera menos de 10 recientes, todo el catálogo.
+    var base = items;
+    if(!S.demo){
+      var recent = items.filter(function(it){ return isRecentYear(it.year || 0); });
+      if(recent.length >= 10) base = recent;
+    }
+    var pool = byRatingDesc(base).slice(0, 30);
     var picked = weeklyPick(pool, sectionKey, 10);
     return byRatingDesc(picked);   // se muestran por rating descendente; el orden ES el ranking
   }

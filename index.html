@@ -256,7 +256,14 @@
   .video-box:-webkit-full-screen video{width:100%; height:100%;}
   /* Horizontal FORZADO (iPhone): la caja del video se gira en la página;
      funciona aunque el teléfono tenga el bloqueo de rotación activado. */
-  .video-box.force-land{position:fixed; z-index:400; background:#000; width:100vh; height:100vw; left:50%; top:50%; transform:translate(-50%,-50%) rotate(90deg);}
+  .video-box.force-land{position:fixed; z-index:400; background:#000; width:100vh; height:100vw; width:100dvh; height:100dvw; left:50%; top:50%; transform:translate(-50%,-50%) rotate(90deg);}
+  /* Botón para SALIR del modo horizontal: vive DENTRO de la caja del
+     video (la barra normal queda tapada por la caja girada) y solo
+     aparece en horizontal forzado o en pantalla completa. */
+  #btn-land-exit{position:absolute; top:calc(10px + env(safe-area-inset-top, 0px)); right:calc(12px + env(safe-area-inset-right, 0px)); z-index:6; display:none; background:rgba(0,0,0,.75); color:#fff; border:1px solid rgba(255,255,255,.4); border-radius:999px; padding:11px 18px; font-family:inherit; font-size:15px; font-weight:700; cursor:pointer;}
+  .video-box.force-land #btn-land-exit{display:block;}
+  .video-box:fullscreen #btn-land-exit{display:block;}
+  .video-box:-webkit-full-screen #btn-land-exit{display:block;}
   #video{width:100%; height:100%; background:#000;}
   #dial{position:absolute; pointer-events:none; top:18px; right:22px; background:rgba(0,0,0,.72); border:1px solid var(--amber); color:var(--amber); font-size:34px; font-weight:800; padding:6px 18px; border-radius:12px; letter-spacing:2px; display:none; z-index:3;}
   .player-err{margin:0; padding:12px 18px; background:#3a1416; color:#ffb4ab; font-size:14px; line-height:1.5; display:none;}
@@ -415,6 +422,7 @@
   <div class="video-box" id="video-box">
     <video id="video" controls playsinline></video>
     <div id="dial"></div>
+    <button id="btn-land-exit" type="button" aria-label="Salir del modo horizontal">✕ Salir</button>
   </div>
   <div id="player-err" class="player-err"></div>
 </section>
@@ -1850,7 +1858,7 @@
     P.dialStr = "";
     P.bakedSeek = false; P.seekBase = 0;
     $("dial").style.display = "none";
-    $("video-box").classList.remove("force-land");
+    exitForceLand();
     var pe = $("player-err"); pe.className = "player-err"; pe.textContent = "";
     P.open = false;
   }
@@ -2191,9 +2199,50 @@
   }
   document.addEventListener("visibilitychange", function(){ if (document.hidden) autoPip(); });
   window.addEventListener("pagehide", autoPip);
+  /* Horizontal forzado: la caja se dimensiona con el viewport VISIBLE
+     (visualViewport), que ya descuenta la barra de direcciones de
+     Safari; con 100vh la caja quedaba más grande que la pantalla
+     real y la imagen se cortaba. La caja va girada 90°, así que su
+     ancho es el alto visible y su alto es el ancho visible. */
+  function sizeForceLand(){
+    var box = $("video-box");
+    if(!box || !box.classList.contains("force-land")) return;
+    var vv = window.visualViewport;
+    var w = vv ? vv.width : window.innerWidth;
+    var h = vv ? vv.height : window.innerHeight;
+    box.style.width = h + "px";
+    box.style.height = w + "px";
+    box.style.left = ((vv ? vv.offsetLeft : 0) + w / 2) + "px";
+    box.style.top = ((vv ? vv.offsetTop : 0) + h / 2) + "px";
+  }
+  function enterForceLand(){
+    var box = $("video-box");
+    box.classList.add("force-land");
+    sizeForceLand();
+    setTimeout(sizeForceLand, 60);
+    setTimeout(sizeForceLand, 350);
+  }
+  function exitForceLand(){
+    var box = $("video-box");
+    if(!box) return;
+    box.classList.remove("force-land");
+    box.style.width = ""; box.style.height = "";
+    box.style.left = ""; box.style.top = "";
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", sizeForceLand);
+    window.visualViewport.addEventListener("scroll", sizeForceLand);
+  }
+  window.addEventListener("resize", sizeForceLand);
+  $("btn-land-exit").addEventListener("click", function(){
+    if ($("video-box").classList.contains("force-land")) { exitForceLand(); return; }
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      if (document.exitFullscreen) document.exitFullscreen();
+    }
+  });
   $("btn-fs").addEventListener("click", function(){
     var v = $("video"), box = $("video-box");
-    if (box.classList.contains("force-land")) { box.classList.remove("force-land"); return; }
+    if (box.classList.contains("force-land")) { exitForceLand(); return; }
     if (document.fullscreenElement || document.webkitFullscreenElement) {
       if (document.exitFullscreen) document.exitFullscreen();
       return;
@@ -2204,7 +2253,7 @@
       // caja del video dentro de la página (fuerza el horizontal aunque el
       // teléfono tenga bloqueada la rotación). Si ya está apaisado, no hace
       // falta girar nada.
-      if (window.innerWidth < window.innerHeight) box.classList.add("force-land");
+      if (window.innerWidth < window.innerHeight) enterForceLand();
       return;
     }
     function lockLand(){
@@ -2221,7 +2270,7 @@
   });
   window.addEventListener("orientationchange", function(){
     setTimeout(function(){
-      if (window.innerWidth >= window.innerHeight) $("video-box").classList.remove("force-land");
+      if (window.innerWidth >= window.innerHeight) exitForceLand();
     }, 350);
   });
   videoEl().addEventListener("pause", function(){ saveVodPosition(); });

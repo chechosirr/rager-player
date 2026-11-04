@@ -184,6 +184,16 @@
      ya cargaron — nada de pantallas con los huecos vacíos. */
   #section-body{ transition:opacity .3s ease; }
   #view-section.arming #section-body{ opacity:0; }
+  /* Entrada desde el perfil (pedido de Sergio 4-nov): el nombre
+     RAGER se ESCRIBE al centro de la pantalla y luego VIAJA a su
+     puesto en la cabecera del panel, mientras por detrás cargan
+     los datos y las primeras imágenes de las secciones. */
+  #view-home .brand.brand-away{ visibility:hidden; }
+  #enter-anim{ position:fixed; inset:0; z-index:400; background:var(--bg); display:flex; align-items:center; justify-content:center; }
+  #enter-anim.hidden{ display:none; }
+  .enter-word{ position:relative; font-weight:800; color:var(--red); font-size:min(21vw,92px); letter-spacing:.3px; line-height:1; white-space:nowrap; }
+  .enter-word span{ display:inline-block; opacity:0; }
+  .enter-pen{ position:absolute; bottom:-16px; left:0; width:11px; height:11px; border-radius:50%; background:#ff5147; box-shadow:0 0 14px 5px rgba(229,57,53,.7); opacity:0; }
   /* Nave WARP de la marca (pedido de Sergio 4-nov): las pantallas de
      sección entran NORMALES; lo que viaja es la palabra Rager del
      header — un puntito de luz en la esquina inferior derecha cruza
@@ -415,6 +425,11 @@
     <button id="btn-profiles-back" class="btn-ghost hidden" type="button">Cerrar sesión</button>
   </div>
 </section>
+
+<!-- Entrada animada: RAGER se escribe al centro y viaja a su puesto -->
+<div id="enter-anim" class="hidden">
+  <div class="enter-word" id="enter-word"><span>R</span><span>A</span><span>G</span><span>E</span><span>R</span><i class="enter-pen" id="enter-pen"></i></div>
+</div>
 
 <!-- ================= PANEL DE INICIO ================= -->
 <section id="view-home" class="hidden">
@@ -1410,6 +1425,96 @@
   }
 
   /* ================================================================
+     Entrada desde el perfil: RAGER se escribe al centro y viaja a
+     su puesto; mientras tanto cargan datos e imágenes por detrás.
+     ================================================================ */
+  var enterAnimRunning = false;
+  function preloadImages(urls, limit){
+    (urls || []).slice(0, limit || 20).forEach(function(u){
+      if(u){ var im = new Image(); im.src = u; }
+    });
+  }
+  function startBackgroundLoads(){
+    if(S.demo) return;
+    loadLiveData().then(function(){
+      try{ preloadImages(S.live.master.slice(0, 24).map(function(ch){ return ch.icon; }), 24); }catch(e){}
+    }).catch(function(){});
+    loadMoviesData().then(function(){
+      try{ preloadImages(top10Vod(S.movies.items, "vod-top10").map(function(it){ return posterSrc(it.icon); }), 12); }catch(e){}
+    }).catch(function(){});
+    loadSeriesData().then(function(){
+      try{ preloadImages(top10Vod(S.series.items, "series-top10").map(function(it){ return posterSrc(it.cover); }), 12); }catch(e){}
+    }).catch(function(){});
+  }
+  function enterFromProfile(){
+    if(enterAnimRunning){ goHome(); return; }
+    // En el mismo momento del toque empiezan a cargar por detrás
+    // los datos y las primeras imágenes de las tres secciones.
+    startBackgroundLoads();
+    var overlay = $("enter-anim"), word = $("enter-word"), pen = $("enter-pen");
+    var letters = word.querySelectorAll("span");
+    word.getAnimations().forEach(function(a){ a.cancel(); });
+    overlay.getAnimations().forEach(function(a){ a.cancel(); });
+    overlay.style.backgroundColor = "";
+    letters.forEach(function(l){ l.style.opacity = "0"; });
+    overlay.classList.remove("hidden");
+    enterAnimRunning = true;
+    // Vigía: pase lo que pase, a los 4 s el panel queda libre.
+    setTimeout(function(){
+      if(!enterAnimRunning) return;
+      if($("view-home").classList.contains("hidden")) goHome();
+      finishEnter(overlay, document.querySelector("#view-home .brand"));
+    }, 4000);
+    // La escritura: letra a letra, con la punta de luz que las traza.
+    var wordW = word.offsetWidth || 260;
+    var writeAnims = [];
+    letters.forEach(function(l, i){
+      writeAnims.push(l.animate([
+        { opacity: 0, transform: "translateY(16px) rotate(-5deg) scale(.75)", filter: "blur(7px)" },
+        { opacity: 1, transform: "translateY(0px) rotate(0deg) scale(1)", filter: "blur(0px)" }
+      ], { duration: 250, delay: 120 + i * 115, easing: "cubic-bezier(.2,.7,.3,1.15)", fill: "forwards" }));
+    });
+    pen.animate([
+      { opacity: 0, transform: "translateX(0px)" },
+      { opacity: 1, transform: "translateX(" + Math.round(wordW * 0.22) + "px)", offset: 0.22 },
+      { opacity: 1, transform: "translateX(" + wordW + "px)", offset: 0.92 },
+      { opacity: 0, transform: "translateX(" + wordW + "px)" }
+    ], { duration: 120 + letters.length * 115 + 160, easing: "linear", fill: "forwards" });
+    Promise.all(writeAnims.map(function(a){ return a.finished; })).catch(function(){}).then(function(){
+      return new Promise(function(r){ setTimeout(r, 230); });
+    }).then(function(){
+      if(enterAnimRunning) flyEnterWord(overlay, word);
+    });
+  }
+  function flyEnterWord(overlay, word){
+    // El panel aparece detrás (y sigue cargando) y la palabra
+    // viaja a su puesto: la marca de la cabecera del panel.
+    goHome();
+    var brand = document.querySelector("#view-home .brand");
+    if(!brand){ finishEnter(overlay, null); return; }
+    brand.classList.add("brand-away");
+    var wr = word.getBoundingClientRect();
+    var br = brand.getBoundingClientRect();
+    var dx = (br.left + br.width / 2) - (wr.left + wr.width / 2);
+    var dy = (br.top + br.height / 2) - (wr.top + wr.height / 2);
+    var sc = br.width / wr.width;
+    var anim = word.animate([
+      { transform: "translate(0px, 0px) scale(1)" },
+      { transform: "translate(" + dx + "px, " + dy + "px) scale(" + sc + ")" }
+    ], { duration: 640, easing: "cubic-bezier(.55,.06,.25,1)", fill: "forwards" });
+    overlay.animate([
+      { backgroundColor: "rgba(16,16,20,1)" },
+      { backgroundColor: "rgba(16,16,20,0)" }
+    ], { duration: 640, easing: "ease-out", fill: "forwards" });
+    anim.finished.then(function(){ finishEnter(overlay, brand); }).catch(function(){ finishEnter(overlay, brand); });
+  }
+  function finishEnter(overlay, brand){
+    if(brand) brand.classList.remove("brand-away");
+    overlay.classList.add("hidden");
+    enterAnimRunning = false;
+  }
+
+  /* ================================================================
      Menú desplegable del perfil (chip arriba a la derecha)
      ================================================================ */
   var menuAnchor = null;   // chip que abrió el menú
@@ -1508,7 +1613,7 @@
         else {
           S.profile = p;
           setActiveProfileId(p.id);
-          goHome();
+          enterFromProfile();
         }
       });
       grid.appendChild(b);

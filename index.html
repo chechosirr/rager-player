@@ -274,6 +274,15 @@
   .vodbar{position:absolute; top:0; left:0; right:0; z-index:6; display:flex; align-items:center; gap:10px; padding:8px 12px; background:linear-gradient(180deg, rgba(0,0,0,.6), rgba(0,0,0,0));}
   .vodbar input[type=range]{flex:1; min-width:0; accent-color:var(--red); height:26px;}
   .vb-time{font-size:13px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.85); min-width:42px; text-align:center;}
+  /* Intro con el logo antes de películas/series (pedido de Sergio, 3-nov):
+     al darle «Ver» aparece el logo de Rager (ojo + marca) sobre fondo negro
+     y se DESVANECE LENTO (1,6 s) dejando ver el video, que ya viene
+     cargando por debajo. Solo películas/series, no canales en vivo. */
+  #vod-intro{position:absolute; inset:0; z-index:8; background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; opacity:0; pointer-events:none; transition:opacity .45s ease;}
+  #vod-intro.on{opacity:1;}
+  #vod-intro.out{opacity:0; transition:opacity 1.6s ease;}
+  #vod-intro img{width:min(34vw,128px); height:auto; object-fit:contain;}
+  #intro-brand{color:var(--red); font-size:clamp(38px, 9vw, 62px); line-height:1;}
   .video-box:fullscreen{background:#000;}
   .video-box:fullscreen video{width:100%; height:100%;}
   .video-box:-webkit-full-screen{background:#000;}
@@ -288,7 +297,7 @@
   /* Marca «RAGER» estilo Amazon (pedido de Sergio): redondeada y gruesa,
      TODA EN MAYÚSCULAS, con Nunito Black; si la webfont no carga, cae a una
      sans redondeada del sistema. Solo la marca, no el resto de los textos. */
-  .login-brand, .brandbar .brand, .home-top .brand, #splash-brand{
+  .login-brand, .brandbar .brand, .home-top .brand, #splash-brand, #intro-brand{
     font-family:"Nunito","Arial Rounded MT Bold","Helvetica Rounded",ui-rounded,"Segoe UI",system-ui,sans-serif;
     font-weight:900; text-transform:uppercase; letter-spacing:-.02em;
   }
@@ -469,6 +478,10 @@
       <span id="vb-dur" class="vb-time">—</span>
     </div>
     <div id="dial"></div>
+    <div id="vod-intro" class="hidden">
+      <img id="intro-eye" alt="">
+      <div id="intro-brand">Rager</div>
+    </div>
   </div>
   <div id="player-err" class="player-err"></div>
 </section>
@@ -2206,10 +2219,36 @@
     if(P.dialTimer){ clearTimeout(P.dialTimer); P.dialTimer = null; }
     P.dialStr = "";
     P.bakedSeek = false; P.seekBase = 0;
+    hideVodIntro();
     $("dial").style.display = "none";
     exitForceLand();
     var pe = $("player-err"); pe.className = "player-err"; pe.textContent = "";
     P.open = false;
+  }
+  /* Intro con el logo antes de películas/series (pedido de Sergio, 3-nov):
+     aparece el logo de Rager (el ojo, tomado de la pantalla de acceso, +
+     la marca), se queda ~1,5 s y se desvanece LENTO (1,6 s) mientras el
+     video carga por debajo. Los canales en vivo NO lo muestran. */
+  var introTimers = [];
+  function hideVodIntro(){
+    introTimers.forEach(function(t){ clearTimeout(t); }); introTimers = [];
+    var el = $("vod-intro");
+    if(!el) return;
+    el.classList.remove("on"); el.classList.remove("out"); el.classList.add("hidden");
+  }
+  function showVodIntro(){
+    hideVodIntro();
+    var el = $("vod-intro");
+    var img = $("intro-eye");
+    if(img && !img.getAttribute("src")){
+      var eye = document.querySelector(".login-eye");
+      if(eye && eye.getAttribute("src")) img.src = eye.getAttribute("src");
+    }
+    el.classList.remove("hidden");
+    void el.offsetWidth; // reflow: que la entrada se anime desde opacidad 0
+    el.classList.add("on");
+    introTimers.push(setTimeout(function(){ el.classList.remove("on"); el.classList.add("out"); }, 1500));
+    introTimers.push(setTimeout(function(){ hideVodIntro(); }, 3300));
   }
   function playerFail(msg){
     var pe = $("player-err");
@@ -2441,6 +2480,7 @@
     $("player-name").textContent = m.name;
     $("player-sub").textContent = m.extra || "";
     showPlayerUI();
+    showVodIntro();
     var url, alt = null;
     if(S.demo){ url = demoPlayUrl(m.streamId); }
     else { url = vodUrl("movie", m.streamId, m.extension); }
@@ -2465,6 +2505,7 @@
     $("player-name").textContent = seriesItem.name;
     $("player-sub").textContent = "T" + ep.season + " · E" + ep.number + (ep.title ? " — " + ep.title : "");
     showPlayerUI();
+    showVodIntro();
     var epNumId = parseInt(ep.id, 10);
     var url, alt = null;
     if(S.demo){ url = demoPlayUrl(isNaN(epNumId) ? 0 : epNumId); }

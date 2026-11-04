@@ -191,10 +191,11 @@
   .search-backbar{padding:2px 0 10px;}
   .row-block{margin-top:22px;}
   .row-title{font-size:var(--row-title); font-weight:700; padding:0 var(--pad); margin-bottom:12px;}
-  /* Fila «Top 10 semanal» (pedido de Sergio): el título queda en ÁMBAR
-     y la iluminación del bloque (degradado + banda superior) va en ROJO. */
+  /* Fila «Top 10 semanal» (pedido de Sergio): el título va en ROJO y
+     un 30% más grande que el resto; la iluminación del bloque
+     (degradado + banda superior) también en rojo. */
   .row-block.top10{margin-top:26px; padding:14px 0 8px; background:linear-gradient(180deg, rgba(229,57,53,.14), rgba(229,57,53,.05) 65%, rgba(229,57,53,0)); border-top:2px solid rgba(229,57,53,.65); border-radius:0 0 16px 16px;}
-  .row-block.top10 .row-title{color:var(--amber); letter-spacing:.4px;}
+  .row-block.top10 .row-title{color:var(--red); font-size:calc(var(--row-title) * 1.3); letter-spacing:.4px;}
   .row-scroll{display:flex; gap:12px; overflow-x:auto; padding:4px var(--pad) 10px; scrollbar-width:thin; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; touch-action:pan-x pan-y;}
   .row-scroll.lazy-ch{min-height:calc(var(--ch-h) + 14px);}
   .row-scroll.lazy-po{min-height:calc(var(--po-w) * 1.5 + 54px);}
@@ -205,8 +206,9 @@
   .ch-card{flex:0 0 auto; width:var(--ch-w); height:var(--ch-h); background:var(--panel); border:2px solid var(--line); border-radius:12px; padding:12px; text-align:left; color:var(--txt); display:flex; flex-direction:column; position:relative; overflow:hidden;}
   .ch-card:hover, .ch-card:focus-visible{border-color:var(--red); outline:none;}
   .ch-card .chnum{color:var(--amber); font-weight:800; font-size:var(--num-size); line-height:1;}
-  .ch-card .chrank{position:absolute; top:8px; left:10px; color:var(--red); font-weight:900; font-size:var(--rank-size); line-height:1; text-shadow:0 1px 3px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.6);}
-  .ch-card .logo{flex:1; display:flex; align-items:center; justify-content:center; padding:6px 4px; min-height:0;}
+  .ch-card .chrank{position:absolute; bottom:6px; left:8px; color:var(--red); font-weight:900; font-size:var(--rank-size); line-height:1; text-shadow:0 1px 3px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.6);}
+  .ch-card .logo{flex:1; display:flex; align-items:center; justify-content:center; padding:6px 4px; min-height:0; position:relative;}
+  .ch-card .logobox{display:flex; align-items:center; justify-content:center; height:100%; min-height:0;}
   .ch-card .logo img{max-height:var(--logo-h); max-width:88%; object-fit:contain;}
   .ch-card .logo .nologo{width:52px; height:52px; border-radius:10px; background:var(--panel2); color:var(--red); font-weight:800; display:flex; align-items:center; justify-content:center; font-size:24px;}
   .ch-card .chname{font-size:var(--card-name); line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
@@ -217,6 +219,7 @@
   /* Tarjeta de portada (películas/series) */
   .po-card{flex:0 0 auto; width:var(--po-w); background:transparent; border:none; text-align:left; color:var(--txt); padding:0; position:relative;}
   .po-card .poster{width:var(--po-w); aspect-ratio:2/3; border-radius:10px; overflow:hidden; background:var(--panel2); border:2px solid transparent; position:relative;}
+  .po-card .pobox{width:100%; height:100%; display:flex; align-items:center; justify-content:center;}
   .po-card:hover .poster, .po-card:focus-visible .poster{border-color:var(--red);}
   .po-card:focus-visible{outline:none;}
   .po-card .poster img{width:100%; height:100%; object-fit:cover; display:block;}
@@ -224,7 +227,7 @@
   /* El puesto va sobre la esquina superior izquierda de la portada, con
      sombra para leerse sobre cualquier imagen; nunca sobre el título,
      que va debajo de la portada. */
-  .po-card .porank{position:absolute; top:2px; left:7px; color:var(--red); font-weight:900; font-size:var(--rank-po-size); line-height:1; text-shadow:0 1px 2px rgba(0,0,0,.9), 0 2px 8px rgba(0,0,0,.85), -1px 0 0 rgba(0,0,0,.35), 1px 0 0 rgba(0,0,0,.35); z-index:2; pointer-events:none;}
+  .po-card .porank{position:absolute; bottom:5px; left:7px; color:var(--red); font-weight:900; font-size:var(--rank-po-size); line-height:1; text-shadow:0 1px 2px rgba(0,0,0,.9), 0 2px 8px rgba(0,0,0,.85), -1px 0 0 rgba(0,0,0,.35), 1px 0 0 rgba(0,0,0,.35); z-index:2; pointer-events:none;}
   .po-card .potitle{font-size:var(--card-name); margin-top:8px; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
   .po-card .posub{color:var(--mut); font-size:12.5px; margin-top:2px;}
   .po-card .rec-time{color:var(--amber); font-weight:700; font-size:13px; margin-top:4px;}
@@ -941,13 +944,17 @@
     var base = kind === "movie" ? movieUrl(id, ext) : seriesUrl(id, ext);
     if(!REMUX_EXTS[e]) return base;
     // Formato que el navegador no reproduce tal cual: el puente lo
-    // convierte a MP4 al vuelo. Si hay posición guardada, la conversión
-    // empieza en ese punto (?ss=) y el reproductor ya no busca de nuevo.
-    var u = SERVER + "/remux" + base.slice(SERVER.length);
+    // convierte a HLS (.m3u8 por segmentos) — Safari lo reproduce de
+    // forma nativa, igual que los canales en vivo. (La entrega anterior
+    // como MP4 continuo se quedaba en «Cargando video...» en el iPhone.)
+    // Si hay posición guardada, la conversión empieza en ese punto
+    // (ss=) y el reproductor ya no busca de nuevo.
+    var u = SERVER + "/remux/" + kind + "/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) +
+            "/" + id + ".m3u8?ext=" + e;
     if(P.resumePos && P.resumePos > 5){
       P.bakedSeek = true;
       P.seekBase = Math.floor(P.resumePos);
-      u += "?ss=" + P.seekBase;
+      u += "&ss=" + P.seekBase;
     }
     return u;
   }
@@ -1422,10 +1429,11 @@
   function channelCard(ch, rank, nowTitle){
     var b = document.createElement("button");
     b.type = "button"; b.className = "ch-card";
+    var rankHtml = rank ? '<div class="chrank">' + rank + "</div>" : "";
     var logo = ch.icon
-      ? '<div class="logo"><img src="' + esc(ch.icon) + '" alt="" loading="lazy" decoding="async" onerror="this.parentNode.innerHTML=\'<div class=&quot;nologo&quot;>' + esc((ch.name||"R").trim().charAt(0).toUpperCase()) + '</div>\'"></div>'
-      : '<div class="logo"><div class="nologo">' + esc((ch.name||"R").trim().charAt(0).toUpperCase()) + "</div></div>";
-    b.innerHTML = (rank ? '<div class="chrank">' + rank + "</div>" : "") + logo +
+      ? '<div class="logo"><div class="logobox"><img src="' + esc(ch.icon) + '" alt="" loading="lazy" decoding="async" onerror="this.parentNode.innerHTML=\'<div class=&quot;nologo&quot;>' + esc((ch.name||"R").trim().charAt(0).toUpperCase()) + '</div>\'"></div>' + rankHtml + "</div>"
+      : '<div class="logo"><div class="logobox"><div class="nologo">' + esc((ch.name||"R").trim().charAt(0).toUpperCase()) + "</div></div>" + rankHtml + "</div>";
+    b.innerHTML = logo +
       '<div class="chnum">' + ch.number + "</div>" +
       '<div class="chname">' + esc(ch.name) + "</div>" +
       (nowTitle ? '<div class="chnow">▶ Ahora: ' + esc(nowTitle) + "</div>" : "");
@@ -1459,14 +1467,14 @@
     opts = opts || {};
     var b = document.createElement("button");
     b.type = "button"; b.className = "po-card";
+    var rankHtml = opts.rank ? '<div class="porank">' + opts.rank + "</div>" : "";
     var poster = item.poster
-      ? '<div class="poster"><img src="' + esc(posterSrc(item.poster)) + '" alt="" loading="lazy" decoding="async" onerror="this.parentNode.innerHTML=\'<div class=&quot;nopo&quot;>' + esc((item.title||"R").trim().charAt(0).toUpperCase()) + '</div>\'"></div>'
-      : '<div class="poster"><div class="nopo">' + esc((item.title||"R").trim().charAt(0).toUpperCase()) + "</div></div>";
+      ? '<div class="poster"><div class="pobox"><img src="' + esc(posterSrc(item.poster)) + '" alt="" loading="lazy" decoding="async" onerror="this.parentNode.innerHTML=\'<div class=&quot;nopo&quot;>' + esc((item.title||"R").trim().charAt(0).toUpperCase()) + '</div>\'"></div>' + rankHtml + "</div>"
+      : '<div class="poster"><div class="pobox"><div class="nopo">' + esc((item.title||"R").trim().charAt(0).toUpperCase()) + "</div></div>" + rankHtml + "</div>";
     var html = poster;
-    /* El numeral se pinta en la esquina superior izquierda de la portada
-       (la tarjeta no tiene relleno: la portada arranca en esa esquina) y
-       nunca sobre el título, que va debajo de la portada. */
-    if(opts.rank) html += '<div class="porank">' + opts.rank + "</div>";
+    /* El numeral va DENTRO de la portada, en su esquina inferior
+       izquierda (pedido de Sergio); la imagen vive en .pobox para que
+       su respaldo sin imagen no borre el numeral. */
     html += '<div class="potitle">' + esc(item.title) + "</div>";
     if(opts.sub) html += '<div class="posub">' + esc(opts.sub) + "</div>";
     if(opts.recLabel) html += '<div class="rec-time">' + esc(opts.recLabel) + "</div>";
@@ -2212,7 +2220,10 @@
     var isHls = /\.m3u8($|\?)/i.test(url);
     var isRemux = url.indexOf("/remux/") >= 0;
     if(isHls && !(v.canPlayType("application/vnd.apple.mpegurl")) && window.Hls && Hls.isSupported()){
-      hls = new Hls({ maxBufferLength: 30 });
+      // En las conversiones del puente (lista EVENT que va creciendo)
+      // hay que empezar desde el primer segmento, no desde el borde en vivo.
+      var hlsCfg = url.indexOf("/remux/") >= 0 ? { maxBufferLength: 30, startPosition: 0 } : { maxBufferLength: 30 };
+      hls = new Hls(hlsCfg);
       hls.loadSource(url);
       hls.attachMedia(v);
       hls.on(Hls.Events.MANIFEST_PARSED, function(){ tryResume(); v.play().catch(function(){}); });

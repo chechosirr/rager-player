@@ -3596,7 +3596,20 @@
     if(S.section === "countries") return "countries";
     return "section:" + (fallbackSection || S.section || "live");
   }
+  /* Al salir del video, el cliente avisa al puente para que su
+     conversión se deseche AL INSTANTE y el puesto quede libre
+     (pedido de Sergio 4-nov): sin este aviso, la conversión seguiría
+     corriendo sola hasta que la limpieza por inactividad la apagara. */
+  function stopConversions(){
+    if(S.demo || !S.user) return;
+    var url = SERVER + "/stop/" + encodeURIComponent(S.user);
+    try{
+      if(navigator.sendBeacon){ navigator.sendBeacon(url); return; }
+    }catch(e){}
+    try{ fetch(url, { keepalive: true }).catch(function(){}); }catch(e){}
+  }
   function closePlayer(){
+    stopConversions();
     saveVodPosition();
     stopPlayer();
     var rt = P.returnTarget || "section:live";
@@ -3781,6 +3794,7 @@
   }
   document.addEventListener("visibilitychange", function(){ if (document.hidden) autoPip(); });
   window.addEventListener("pagehide", autoPip);
+  window.addEventListener("pagehide", function(){ if(P.open) stopConversions(); });
   /* Horizontal forzado: la caja se dimensiona con el viewport VISIBLE
      (visualViewport), que ya descuenta la barra de direcciones de
      Safari; con 100vh la caja quedaba más grande que la pantalla

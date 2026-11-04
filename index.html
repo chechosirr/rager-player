@@ -271,8 +271,15 @@
   .player-name{font-weight:700; font-size:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .player-sub{color:var(--mut); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .video-box{flex:1; display:flex; align-items:center; justify-content:center; min-height:0; position:relative;}
-  .vodbar{position:absolute; top:0; left:0; right:0; z-index:6; display:flex; align-items:center; gap:10px; padding:8px 12px; background:linear-gradient(180deg, rgba(0,0,0,.6), rgba(0,0,0,0));}
+  /* Barra de reproducción PROPIA de películas/series (abajo, pedido de
+     Sergio 3-nov): sustituye a los controles nativos en el VOD. Aparece al
+     tocar la pantalla —como los demás botones del reproductor— y se
+     oculta sola a los 3 s mientras el video avanza; muestra los minutos
+     que van, la duración total y permite adelantar y retrasar. */
+  .vodbar{position:absolute; bottom:0; left:0; right:0; z-index:7; display:flex; align-items:center; gap:10px; padding:10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); background:linear-gradient(0deg, rgba(0,0,0,.78), rgba(0,0,0,0)); opacity:0; pointer-events:none; transition:opacity .3s ease;}
+  .vodbar.show{opacity:1; pointer-events:auto;}
   .vodbar input[type=range]{flex:1; min-width:0; accent-color:var(--red); height:26px;}
+  #vb-play{flex:none; width:42px; height:42px; border-radius:50%; border:1px solid rgba(255,255,255,.4); background:rgba(18,18,24,.55); color:#fff; font-size:16px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer;}
   .vb-time{font-size:13px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.85); min-width:42px; text-align:center;}
   /* Intro con el logo antes de películas/series (pedido de Sergio, 3-nov):
      al darle «Ver» aparece el logo de Rager (ojo + marca) sobre fondo negro
@@ -473,6 +480,7 @@
   <div class="video-box" id="video-box">
     <video id="video" controls playsinline></video>
     <div id="vodbar" class="vodbar hidden">
+      <button id="vb-play" type="button" aria-label="Reproducir o pausar">▶</button>
       <span id="vb-cur" class="vb-time">0:00</span>
       <input id="vb-range" type="range" min="0" max="1000" value="0" step="1" aria-label="Posición de la reproducción">
       <span id="vb-dur" class="vb-time">—</span>
@@ -2204,7 +2212,7 @@
     channel: null,                   // canal en vivo actual
     movie: null, episode: null, seriesItem: null,
     resumePos: 0, returnTarget: "section:live",
-    dialStr: "", dialTimer: null, saveTimer: null, triedAlt: false,
+    dialStr: "", dialTimer: null, saveTimer: null, barTimer: null, triedAlt: false,
     bakedSeek: false, seekBase: 0,
     contentDur: 0, isRemux: false, vbScrubbing: false, durationKey: ""
   };
@@ -2220,6 +2228,8 @@
     P.dialStr = "";
     P.bakedSeek = false; P.seekBase = 0;
     hideVodIntro();
+    hideVodBar();
+    v.setAttribute("controls", "");
     $("dial").style.display = "none";
     exitForceLand();
     var pe = $("player-err"); pe.className = "player-err"; pe.textContent = "";
@@ -2305,6 +2315,7 @@
       try{ videoEl().currentTime = sec; }catch(e){}
     }
     setTimeout(updateVodBar, 60);
+    showVodBar();
   }
   function fetchMovieDuration(id){
     var key = "m" + id;
@@ -2322,12 +2333,35 @@
     if(vbInit) return;
     vbInit = true;
     var r = $("vb-range");
-    r.addEventListener("pointerdown", function(){ P.vbScrubbing = true; });
+    r.addEventListener("pointerdown", function(){ P.vbScrubbing = true; showVodBar(); });
     r.addEventListener("input", function(){ if(P.contentDur) $("vb-cur").textContent = fmtT(Number(r.value)); });
-    r.addEventListener("change", function(){ P.vbScrubbing = false; if(P.contentDur) seekVodTo(Number(r.value)); });
+    r.addEventListener("change", function(){ P.vbScrubbing = false; if(P.contentDur) seekVodTo(Number(r.value)); showVodBar(); });
     r.addEventListener("blur", function(){ P.vbScrubbing = false; });
-    videoEl().addEventListener("timeupdate", updateVodBar);
-    videoEl().addEventListener("loadedmetadata", updateVodBar);
+    var v = videoEl();
+    v.addEventListener("timeupdate", updateVodBar);
+    v.addEventListener("loadedmetadata", updateVodBar);
+    // Botón propio de reproducir/pausar.
+    $("vb-play").addEventListener("click", function(){
+      if(v.paused || v.ended){ v.play().catch(function(){}); } else { v.pause(); }
+    });
+    v.addEventListener("play", function(){ syncVbPlay(); armVodBarHide(); });
+    v.addEventListener("playing", function(){ syncVbPlay(); armVodBarHide(); });
+    v.addEventListener("pause", function(){ syncVbPlay(); showVodBar(); });
+    v.addEventListener("ended", function(){ syncVbPlay(); showVodBar(); });
+    v.addEventListener("waiting", function(){ if(P.kind === "movie" || P.kind === "episode") showVodBar(); });
+    // Tocar la pantalla muestra la barra y la vuelve a ocultar sola,
+    // igual que los demás controles del reproductor. Un toque dentro de
+    // la propia barra no la oculta: solo renueva su tiempo visible.
+    var box = $("video-box");
+    box.addEventListener("pointerdown", function(ev){
+      if(!(P.kind === "movie" || P.kind === "episode")) return;
+      if(ev.target.closest && ev.target.closest("#vodbar")){ showVodBar(); return; }
+      if($("vodbar").classList.contains("show")){ hideVodBar(); } else { showVodBar(); }
+    });
+    box.addEventListener("mousemove", function(){
+      if(!(P.kind === "movie" || P.kind === "episode")) return;
+      if(!$("vodbar").classList.contains("show")){ showVodBar(); } else { armVodBarHide(); }
+    });
   }
   function attachSource(url, altUrl){
     var v = videoEl();
@@ -2371,12 +2405,39 @@
     }
     P.resumePos = 0;
   }
+  /* Barra propia de VOD: se muestra al tocar la pantalla y se oculta sola
+     a los 3 s mientras reproduce; en pausa queda visible. */
+  function showVodBar(){
+    if(!(P.kind === "movie" || P.kind === "episode")) return;
+    $("vodbar").classList.add("show");
+    armVodBarHide();
+  }
+  function hideVodBar(){
+    if(P.barTimer){ clearTimeout(P.barTimer); P.barTimer = null; }
+    $("vodbar").classList.remove("show");
+  }
+  function armVodBarHide(){
+    if(P.barTimer) clearTimeout(P.barTimer);
+    P.barTimer = null;
+    var v = videoEl();
+    if(v.paused || v.ended || P.vbScrubbing) return; // en pausa no se oculta
+    P.barTimer = setTimeout(function(){ $("vodbar").classList.remove("show"); }, 3000);
+  }
+  function syncVbPlay(){
+    $("vb-play").textContent = videoEl().paused || videoEl().ended ? "▶" : "⏸";
+  }
   function showPlayerUI(){
     renderChips();
     showView("view-player");
-    $("vodbar").classList.toggle("hidden", !(P.kind === "movie" || P.kind === "episode"));
+    var isVod = (P.kind === "movie" || P.kind === "episode");
+    $("vodbar").classList.toggle("hidden", !isVod);
+    // En películas/series mandan los controles PROPIOS (la barra de abajo);
+    // los nativos se quedan solo para los canales en vivo.
+    if(isVod){ videoEl().removeAttribute("controls"); } else { videoEl().setAttribute("controls", ""); hideVodBar(); }
     P.open = true;
     updateVodBar();
+    syncVbPlay();
+    if(isVod) showVodBar();
   }
   function playLiveChannel(ch){
     if(!P.open) P.returnTarget = captureReturn("live");
@@ -2856,6 +2917,12 @@
       }
       if(ev.key === "ArrowUp" || ev.key === "PageUp" || ev.key === "ChannelUp"){ ev.preventDefault(); zapStep(1); return; }
       if(ev.key === "ArrowDown" || ev.key === "PageDown" || ev.key === "ChannelDown"){ ev.preventDefault(); zapStep(-1); return; }
+    }
+    if(P.kind === "movie" || P.kind === "episode"){
+      // Adelantar/retrasar 10 s con las flechas; espacio = reproducir/pausar.
+      if(ev.key === "ArrowRight"){ ev.preventDefault(); if(P.contentDur) seekVodTo(Math.min(P.contentDur, vodPosition() + 10)); return; }
+      if(ev.key === "ArrowLeft"){ ev.preventDefault(); seekVodTo(Math.max(0, vodPosition() - 10)); return; }
+      if(ev.key === " "){ ev.preventDefault(); var vv = videoEl(); if(vv.paused || vv.ended) vv.play().catch(function(){}); else vv.pause(); return; }
     }
     if(ev.key === "Escape"){ ev.preventDefault(); $("btn-pback").click(); }
   });

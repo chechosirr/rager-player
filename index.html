@@ -126,6 +126,12 @@
   .support-lead{font-size:17px; font-weight:700; margin:8px 0 12px;}
   .support-num{font-size:clamp(26px,6vw,34px); font-weight:800; letter-spacing:.5px; color:#fff; white-space:nowrap;}
   .support-note{color:var(--mut); font-size:13.5px; margin-top:12px; line-height:1.5;}
+  /* Modal «Mi cuenta» (desde el menú del perfil). */
+  .account-rows{margin:16px 0 4px; display:flex; flex-direction:column; gap:14px;}
+  .account-row{display:flex; flex-direction:column; gap:2px;}
+  .account-row span{color:var(--mut); font-size:13px;}
+  .account-row b{font-size:17px; word-break:break-all;}
+  .account-renew{display:block; text-align:center; text-decoration:none; margin-top:18px;}
 
   /* ===== Perfiles ===== */
   .profiles-wrap{min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px 16px; background:radial-gradient(1200px 600px at 50% -10%, #1d1d28 0%, var(--bg) 60%);}
@@ -476,6 +482,7 @@
 <!-- ================= MENÚ DESPLEGABLE DEL PERFIL ================= -->
 <div id="profile-menu" class="pmenu hidden" role="menu">
   <button id="pm-switch" class="pmenu-item" type="button" role="menuitem">Cambiar de usuario</button>
+  <button id="pm-account" class="pmenu-item" type="button" role="menuitem">Mi cuenta</button>
   <button id="pm-support" class="pmenu-item" type="button" role="menuitem">Contactar a soporte</button>
   <button id="pm-logout" class="pmenu-item danger" type="button" role="menuitem">Cerrar sesión</button>
 </div>
@@ -487,6 +494,19 @@
     <div class="support-lead">Contáctanos por WhatsApp</div>
     <div class="support-num">+1 (570) 469-8339</div>
     <p class="support-note">Abre WhatsApp en tu teléfono y escríbenos a este número.</p>
+  </div>
+</div>
+
+<!-- ================= MODAL MI CUENTA ================= -->
+<div id="modal-account" class="modal-veil hidden">
+  <div class="modal account-modal">
+    <button id="account-close" class="support-x" type="button" aria-label="Cerrar">✕</button>
+    <div class="support-lead">Mi cuenta</div>
+    <div class="account-rows">
+      <div class="account-row"><span>Nombre de usuario</span><b id="account-user"></b></div>
+      <div class="account-row"><span>Vencimiento de la cuenta</span><b id="account-exp"></b></div>
+    </div>
+    <a id="account-renew" class="btn-search account-renew" href="https://wa.me/15704698339" target="_blank" rel="noopener">Renovar suscripción</a>
   </div>
 </div>
 
@@ -1120,6 +1140,26 @@
     else $("modal-support").classList.remove("hidden");
   }
   function closeSupportModal(){ $("modal-support").classList.add("hidden"); }
+
+  /* «Mi cuenta» (menú del perfil): nombre de usuario y vencimiento de
+     la línea con la que se entró, y el botón de renovar por WhatsApp. */
+  function openAccountModal(){
+    var user = S.demo ? "Modo demo" : (S.user || "—");
+    var exp;
+    if(S.demo) exp = "Sin vencimiento (demo)";
+    else if(S.userInfo && S.userInfo.expText){
+      exp = S.userInfo.expText;
+      if(S.userInfo.expDays != null){
+        exp += S.userInfo.expDays < 0
+          ? " (vencida)"
+          : " (en " + S.userInfo.expDays + (S.userInfo.expDays === 1 ? " día)" : " días)");
+      }
+    } else exp = "Sin vencimiento";
+    $("account-user").textContent = user;
+    $("account-exp").textContent = exp;
+    $("modal-account").classList.remove("hidden");
+  }
+  function closeAccountModal(){ $("modal-account").classList.add("hidden"); }
 
 
   /* ================================================================
@@ -2297,6 +2337,7 @@
     $(id).addEventListener("click", function(){ toggleProfileMenu($(id)); });
   });
   $("pm-switch").addEventListener("click", function(){ closeProfileMenu(); goProfiles(); });
+  $("pm-account").addEventListener("click", function(){ closeProfileMenu(); openAccountModal(); });
   $("pm-support").addEventListener("click", function(){ closeProfileMenu(); contactSupport(); });
   $("pm-logout").addEventListener("click", function(){ closeProfileMenu(); logout(); });
   $("profile-menu").addEventListener("keydown", menuKeydown);
@@ -2321,6 +2362,8 @@
   });
   $("support-close").addEventListener("click", closeSupportModal);
   $("modal-support").addEventListener("click", function(ev){ if(ev.target === this) closeSupportModal(); });
+  $("account-close").addEventListener("click", closeAccountModal);
+  $("modal-account").addEventListener("click", function(ev){ if(ev.target === this) closeAccountModal(); });
   $("sec-back").addEventListener("click", goHome);
   $("opt-live").addEventListener("click", function(){ openSection("live"); });
   $("opt-movies").addEventListener("click", function(){ openSection("movies"); });

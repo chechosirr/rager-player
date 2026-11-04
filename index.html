@@ -493,7 +493,6 @@
       <div id="player-name" class="player-name"></div>
       <div id="player-sub" class="player-sub"></div>
     </div>
-    <button id="btn-fs" class="btn-ghost" type="button" style="margin-left:auto; flex:none;">⛶ Horizontal</button>
   </div>
   <div class="video-box" id="video-box">
     <video id="video" controls playsinline></video>
@@ -2253,6 +2252,14 @@
     if(P.dialTimer){ clearTimeout(P.dialTimer); P.dialTimer = null; }
     P.dialStr = "";
     P.bakedSeek = false; P.seekBase = 0;
+    // Nada del título anterior puede asomar en el nuevo (Sergio vio la
+    // hora de la película anterior al cambiar): la barra nace limpia
+    // en cada reproducción y la duración solo se adopta cuando los
+    // metadatos del título NUEVO ya cargaron (P.metaReady).
+    P.playSeq = (P.playSeq || 0) + 1;
+    P.contentDur = 0; P.resumePos = 0; P.metaReady = false; P.isRemux = false;
+    $("vb-cur").textContent = "0:00"; $("vb-dur").textContent = "—";
+    var rr = $("vb-range"); rr.value = 0; paintRange(rr);
     hideVodIntro();
     hideVodBar();
     v.setAttribute("controls", "");
@@ -2323,7 +2330,7 @@
   function updateVodBar(){
     if(!(P.kind === "movie" || P.kind === "episode")) return;
     var v = videoEl();
-    if(!P.contentDur && !P.bakedSeek && !P.isRemux && isFinite(v.duration) && v.duration > 0) P.contentDur = Math.floor(v.duration);
+    if(!P.contentDur && P.metaReady && !P.bakedSeek && !P.isRemux && isFinite(v.duration) && v.duration > 0) P.contentDur = Math.floor(v.duration);
     if(P.vbScrubbing) return;
     var pos = vodPosition();
     $("vb-cur").textContent = fmtT(pos);
@@ -2397,7 +2404,7 @@
       v.muted = !v.muted; syncMute(); showVodBar();
     });
     v.addEventListener("volumechange", syncMute);
-    $("vb-fs").addEventListener("click", function(){ $("btn-fs").click(); syncFsButtons(); showVodBar(); });
+    $("vb-fs").addEventListener("click", function(){ enterHorizontal(); syncFsButtons(); showVodBar(); });
     $("vb-exitfs").addEventListener("click", function(){ exitHorizontal(); syncFsButtons(); showVodBar(); });
     document.addEventListener("fullscreenchange", syncFsButtons);
     document.addEventListener("webkitfullscreenchange", syncFsButtons);
@@ -2427,6 +2434,19 @@
     var isHls = /\.m3u8($|\?)/i.test(url);
     var isRemux = url.indexOf("/remux/") >= 0;
     P.isRemux = isRemux;
+    P.metaReady = false;
+    // Sin duración del panel (muchos episodios la traen a 0), la barra
+    // no puede adelantar ni retroceder: el puente conoce la duración
+    // real del archivo y la escribe en la lista (#EXT-X-RAGER-DUR);
+    // se lee con un fetch de la misma lista y se adopta.
+    if(isRemux && !P.contentDur){
+      var durSeq = P.playSeq;
+      fetch(url).then(function(r){ return r.text(); }).then(function(txt){
+        if(P.playSeq !== durSeq || P.contentDur) return;
+        var m = /#EXT-X-RAGER-DUR:(\d+)/.exec(txt || "");
+        if(m){ P.contentDur = parseInt(m[1], 10); updateVodBar(); }
+      }).catch(function(){});
+    }
     if(isHls && !(v.canPlayType("application/vnd.apple.mpegurl")) && window.Hls && Hls.isSupported()){
       // En las conversiones del puente (lista EVENT que va creciendo)
       // hay que empezar desde el primer segmento, no desde el borde en vivo.
@@ -2434,7 +2454,7 @@
       hls = new Hls(hlsCfg);
       hls.loadSource(url);
       hls.attachMedia(v);
-      hls.on(Hls.Events.MANIFEST_PARSED, function(){ tryResume(); v.play().catch(function(){}); });
+      hls.on(Hls.Events.MANIFEST_PARSED, function(){ tryResume(); P.metaReady = true; updateVodBar(); v.play().catch(function(){}); });
       hls.on(Hls.Events.ERROR, function(ev, data){ if(data && data.fatal) onFatal(); });
     } else if(isHls && !(v.canPlayType("application/vnd.apple.mpegurl")) && !(window.Hls && Hls.isSupported())){
       // Ni HLS nativo ni la librería hls.js (que va incluida en la
@@ -2443,7 +2463,7 @@
       playerFail("No se pudo cargar el reproductor de video. Revisa tu conexión y recarga la página.");
     } else if(isHls || isRemux || v.canPlayType("application/vnd.apple.mpegurl") || /\.(mp4|m4v|mov|webm)($|\?)/i.test(url)){
       v.src = url;
-      v.addEventListener("loadedmetadata", function(){ tryResume(); }, { once: true });
+      v.addEventListener("loadedmetadata", function(){ tryResume(); P.metaReady = true; updateVodBar(); }, { once: true });
       v.addEventListener("error", function(){ onFatal(); }, { once: true });
       v.play().catch(function(){});
     } else {
@@ -2936,14 +2956,13 @@
     window.visualViewport.addEventListener("scroll", sizeForceLand);
   }
   window.addEventListener("resize", sizeForceLand);
-  $("btn-fs").addEventListener("click", function(){
-    var v = $("video"), box = $("video-box");
-    if (box.classList.contains("force-land")) { exitForceLand(); return; }
-    if (document.fullscreenElement || document.webkitFullscreenElement) {
-      if (document.exitFullscreen) document.exitFullscreen();
-      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-      return;
-    }
+  /* Entrar en horizontal desde el botón de la barra (el botón de
+     arriba de la pantalla se quitó el 2026-11-04 por orden de Sergio:
+     basta el de la barra, que aparece al tocar la pantalla; salir, con
+     el botón de salir que solo se ve estando ya en horizontal). */
+  function enterHorizontal(){
+    var box = $("video-box");
+    if(!box || inHorizontal()) return;
     function lockLand(){
       try {
         if (screen.orientation && screen.orientation.lock) {
@@ -2962,13 +2981,14 @@
     // En CUALQUIER dispositivo: primero pantalla completa de verdad;
     // si el aparato no la ofrece o la rechaza, horizontal forzado.
     var req = box.requestFullscreen || box.webkitRequestFullscreen;
-    if (!req) { fallbackLand(); return; }
+    if (!req) { fallbackLand(); syncFsButtons(); return; }
     try {
       var p = req.call(box);
       if (p && p.then) p.then(lockLand).catch(fallbackLand);
       else lockLand();
     } catch(e) { fallbackLand(); }
-  });
+    syncFsButtons();
+  }
   window.addEventListener("orientationchange", function(){
     setTimeout(function(){
       if (window.innerWidth >= window.innerHeight) exitForceLand();

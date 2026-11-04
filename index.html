@@ -278,7 +278,15 @@
      que van, la duración total y permite adelantar y retrasar. */
   .vodbar{position:absolute; bottom:0; left:0; right:0; z-index:7; display:flex; align-items:center; gap:10px; padding:10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); background:linear-gradient(0deg, rgba(0,0,0,.78), rgba(0,0,0,0)); opacity:0; pointer-events:none; transition:opacity .3s ease;}
   .vodbar.show{opacity:1; pointer-events:auto;}
-  .vodbar input[type=range]{flex:1; min-width:0; accent-color:var(--red); height:26px;}
+  /* Deslizador a medida (pedido de Sergio 3-nov): el PUNTO en rojo, la
+     parte ya reproducida en NEGRO y la que falta en un tono tenue. El
+     degradado de la pista lo pinta paintRange() según el avance. */
+  .vodbar input[type=range]{flex:1; min-width:0; height:26px; -webkit-appearance:none; appearance:none; background:transparent; cursor:pointer;}
+  .vodbar input[type=range]::-webkit-slider-runnable-track{height:6px; border-radius:3px; background:var(--vb-fill, rgba(255,255,255,.35));}
+  .vodbar input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--red); border:2px solid #fff; margin-top:-5px; box-shadow:0 1px 4px rgba(0,0,0,.55);}
+  .vodbar input[type=range]::-moz-range-track{height:6px; border-radius:3px; background:rgba(255,255,255,.35);}
+  .vodbar input[type=range]::-moz-range-progress{height:6px; border-radius:3px; background:#000;}
+  .vodbar input[type=range]::-moz-range-thumb{width:12px; height:12px; border-radius:50%; background:var(--red); border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.55);}
   #vb-play{flex:none; width:42px; height:42px; border-radius:50%; border:1px solid rgba(255,255,255,.4); background:rgba(18,18,24,.55); color:#fff; font-size:16px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer;}
   .vb-time{font-size:13px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.85); min-width:42px; text-align:center;}
   /* Intro con el logo antes de películas/series (pedido de Sergio, 3-nov):
@@ -2283,6 +2291,13 @@
     var v = videoEl();
     return (P.bakedSeek ? (P.seekBase || 0) : 0) + (v.currentTime || 0);
   }
+  /* Pinta la pista del deslizador: negro lo ya reproducido y tono tenue
+     lo que falta (el punto va en rojo por CSS). */
+  function paintRange(r){
+    var max = Number(r.max) || 0, val = Number(r.value) || 0;
+    var pct = max > 0 ? Math.max(0, Math.min(100, (val / max) * 100)) : 0;
+    r.style.setProperty("--vb-fill", "linear-gradient(90deg, #000 " + pct + "%, rgba(255,255,255,.35) " + pct + "%)");
+  }
   function updateVodBar(){
     if(!(P.kind === "movie" || P.kind === "episode")) return;
     var v = videoEl();
@@ -2294,6 +2309,7 @@
     var r = $("vb-range");
     if(P.contentDur){ r.max = P.contentDur; r.value = Math.min(Math.floor(pos), P.contentDur); r.disabled = false; }
     else { r.max = 1000; r.value = 0; r.disabled = true; }
+    paintRange(r);
   }
   function seekVodTo(sec){
     sec = Math.max(0, Math.floor(sec));
@@ -2328,7 +2344,7 @@
     vbInit = true;
     var r = $("vb-range");
     r.addEventListener("pointerdown", function(){ P.vbScrubbing = true; showVodBar(); });
-    r.addEventListener("input", function(){ if(P.contentDur) $("vb-cur").textContent = fmtT(Number(r.value)); });
+    r.addEventListener("input", function(){ if(P.contentDur) $("vb-cur").textContent = fmtT(Number(r.value)); paintRange(r); });
     r.addEventListener("change", function(){ P.vbScrubbing = false; if(P.contentDur) seekVodTo(Number(r.value)); showVodBar(); });
     r.addEventListener("blur", function(){ P.vbScrubbing = false; });
     var v = videoEl();

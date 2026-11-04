@@ -1473,10 +1473,27 @@
   /* Bienvenida (pedido de Sergio 4-nov): al elegir usuario se
      muestra «Bienvenido, <nombre>» a pantalla completa ~1,7 s y
      luego entra sola al panel. */
+  /* La bienvenida TAMBIÉN se dice en voz alta (texto-a-voz del
+     propio aparato), SOLO al picar el usuario (pedido de Sergio
+     4-nov): en ningún otro momento habla la página. */
+  function speakWelcome(name){
+    try{
+      if(!("speechSynthesis" in window)) return;
+      speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance("Bienvenido, " + name);
+      u.lang = "es-ES";
+      var vs = speechSynthesis.getVoices();
+      for(var i = 0; i < vs.length; i++){
+        if(/^es/i.test(vs[i].lang || "")){ u.voice = vs[i]; break; }
+      }
+      speechSynthesis.speak(u);
+    }catch(e){}
+  }
   function showWelcomeThenHome(p){
     var w = $("welcome");
     $("welcome-name").textContent = p.name;
     w.classList.remove("hidden");
+    speakWelcome(p.name);
     requestAnimationFrame(function(){ requestAnimationFrame(function(){ w.classList.add("show"); }); });
     setTimeout(function(){
       w.classList.remove("show");

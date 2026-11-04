@@ -210,12 +210,13 @@
   .ch-card .chrank{position:absolute; bottom:6px; left:8px; color:var(--red); font-weight:900; font-size:var(--rank-size); line-height:1; text-shadow:0 1px 3px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.6);}
   .ch-card .logo{flex:1; display:flex; align-items:center; justify-content:center; padding:6px 4px; min-height:0; position:relative;}
   .ch-card .logobox{display:flex; align-items:center; justify-content:center; height:100%; min-height:0;}
-  .ch-card .logo img{max-height:var(--logo-h); max-width:88%; object-fit:contain;}
+  .ch-card .logo img{width:88%; height:var(--logo-h); object-fit:contain;}
   .ch-card .logo .nologo{width:52px; height:52px; border-radius:10px; background:var(--panel2); color:var(--red); font-weight:800; display:flex; align-items:center; justify-content:center; font-size:24px;}
-  .ch-card .chname{font-size:var(--card-name); line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
-  .ch-card .chnow{font-size:11px; color:var(--amber); padding:0 8px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .ch-card .chevent{font-size:11px; font-weight:800; color:#ff5252; letter-spacing:.05em; white-space:nowrap;}
+  .ch-card .chname{font-size:var(--card-name); line-height:1.3; height:calc(var(--card-name)*1.3*2); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+  .ch-card .chnow{font-size:11px; color:var(--amber); padding:0 8px 8px; height:15px; line-height:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .ch-card .chevent{font-size:11px; font-weight:800; color:#ff5252; letter-spacing:.05em; white-space:nowrap; height:15px; line-height:15px;}
   .more-card{flex:0 0 auto; width:var(--more-w); height:var(--ch-h); background:var(--panel2); border:2px dashed #44444f; border-radius:12px; color:var(--txt); font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:center;}
+  .more-card.more-po{width:var(--po-w); height:auto; aspect-ratio:2/3;}
   .more-card:hover, .more-card:focus-visible{border-color:var(--red); outline:none;}
 
   /* Tarjeta de portada (películas/series) */
@@ -230,9 +231,9 @@
      sombra para leerse sobre cualquier imagen; nunca sobre el título,
      que va debajo de la portada. */
   .po-card .porank{position:absolute; bottom:5px; left:7px; color:var(--red); font-weight:900; font-size:var(--rank-po-size); line-height:1; text-shadow:0 1px 2px rgba(0,0,0,.9), 0 2px 8px rgba(0,0,0,.85), -1px 0 0 rgba(0,0,0,.35), 1px 0 0 rgba(0,0,0,.35); z-index:2; pointer-events:none;}
-  .po-card .potitle{font-size:var(--card-name); margin-top:8px; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
-  .po-card .posub{color:var(--mut); font-size:12.5px; margin-top:2px;}
-  .po-card .rec-time{color:var(--amber); font-weight:700; font-size:13px; margin-top:4px;}
+  .po-card .potitle{font-size:var(--card-name); margin-top:8px; line-height:1.3; height:calc(var(--card-name)*1.3*2); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+  .po-card .posub{color:var(--mut); font-size:12.5px; margin-top:2px; height:17px; line-height:17px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .po-card .rec-time{color:var(--amber); font-weight:700; font-size:13px; margin-top:4px; height:18px; line-height:18px;}
   .po-card .prog{height:4px; background:#3a3a44; border-radius:2px; margin-top:5px; overflow:hidden;}
   .po-card .prog i{display:block; height:100%; background:var(--red); border-radius:2px;}
   .more-po{flex:0 0 auto; width:var(--po-w); aspect-ratio:2/3; align-self:flex-start;}
@@ -1758,11 +1759,15 @@
     var logo = ch.icon
       ? '<div class="logo"><div class="logobox"><img src="' + esc(ch.icon) + '" alt="" loading="lazy" decoding="async" onerror="this.parentNode.innerHTML=\'<div class=&quot;nologo&quot;>' + esc((ch.name||"R").trim().charAt(0).toUpperCase()) + '</div>\'"></div>' + rankHtml + "</div>"
       : '<div class="logo"><div class="logobox"><div class="nologo">' + esc((ch.name||"R").trim().charAt(0).toUpperCase()) + "</div></div>" + rankHtml + "</div>";
+    /* Estructura SIMÉTRICA (pedido de Sergio): las líneas de evento
+       y de «Ahora» se pintan SIEMPRE (vacías cuando no aplican) y el
+       nombre ocupa siempre dos líneas, para que el logo y el nombre
+       queden a la misma altura en todas las tarjetas. */
     b.innerHTML = logo +
       '<div class="chnum">' + ch.number + "</div>" +
       '<div class="chname">' + esc(ch.name) + "</div>" +
-      (ch.isEvent ? '<div class="chevent">SOLO EN EVENTO</div>' : "") +
-      (nowTitle ? '<div class="chnow">▶ Ahora: ' + esc(nowTitle) + "</div>" : "");
+      '<div class="chevent">' + (ch.isEvent ? "SOLO EN EVENTO" : "") + "</div>" +
+      '<div class="chnow">' + (nowTitle ? "▶ Ahora: " + esc(nowTitle) : "") + "</div>";
     b.addEventListener("click", function(){ playLiveChannel(ch); });
     return b;
   }
@@ -1802,7 +1807,11 @@
        izquierda (pedido de Sergio); la imagen vive en .pobox para que
        su respaldo sin imagen no borre el numeral. */
     html += '<div class="potitle">' + esc(item.title) + "</div>";
-    if(opts.sub) html += '<div class="posub">' + esc(opts.sub) + "</div>";
+    /* El subtítulo se pinta SIEMPRE (vacío si no hay) y el título
+       ocupa siempre dos líneas: estructura simétrica, y en la fila
+       «Recientes» la barra de progreso queda a la misma altura en
+       todas las tarjetas (pedido de Sergio). */
+    html += '<div class="posub">' + (opts.sub ? esc(opts.sub) : "") + "</div>";
     if(opts.recLabel) html += '<div class="rec-time">' + esc(opts.recLabel) + "</div>";
     if(typeof opts.progress === "number" && opts.progress > 0){
       html += '<div class="prog"><i style="width:' + Math.min(100, Math.round(opts.progress*100)) + '%"></i></div>';

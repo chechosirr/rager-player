@@ -1407,17 +1407,11 @@
     renderChips();
     showView("view-home");
     startBackdrop();
-    // En real, los datos de las TRES secciones se precargan en
-    // segundo plano al llegar al panel: al entrar a una sección ya
-    // está todo a mano y el revelado con imágenes es casi inmediato.
-    if(!S.demo){
-      if(!S.movies){
-        loadMoviesData().then(function(){
-          if(!$("view-home").classList.contains("hidden")) startBackdrop();
-        }).catch(function(){});
-      }
-      if(!S.live) loadLiveData().catch(function(){});
-      if(!S.series) loadSeriesData().catch(function(){});
+    // En real, las portadas del escaparate se cargan en segundo plano (como en la app).
+    if(!S.demo && !S.movies){
+      loadMoviesData().then(function(){
+        if(!$("view-home").classList.contains("hidden")) startBackdrop();
+      }).catch(function(){});
     }
     var opts = document.querySelectorAll(".home-opt");
     opts.forEach(function(o){ o.classList.remove("focused"); });
@@ -1435,21 +1429,21 @@
     });
   }
   function startBackgroundLoads(){
-    if(S.demo) return;
-    loadLiveData().then(function(){
-      try{ preloadImages(S.live.master.slice(0, 24).map(function(ch){ return ch.icon; }), 24); }catch(e){}
-    }).catch(function(){});
-    loadMoviesData().then(function(){
-      try{ preloadImages(top10Vod(S.movies.items, "vod-top10").map(function(it){ return posterSrc(it.icon); }), 12); }catch(e){}
-    }).catch(function(){});
-    loadSeriesData().then(function(){
-      try{ preloadImages(top10Vod(S.series.items, "series-top10").map(function(it){ return posterSrc(it.cover); }), 12); }catch(e){}
-    }).catch(function(){});
+    // SOLO las imágenes del ESCAPARATE del panel (pedido expreso de
+    // Sergio): las 6 portadas del fondo rotativo. Todo lo demás
+    // (datos e imágenes de cada sección) carga al entrar a su
+    // sección, como siempre.
+    var warm = function(){
+      try{ preloadImages(showcaseItems().map(function(x){ return x.img; }), 6); }catch(e){}
+    };
+    if(S.demo){ warm(); return; }
+    if(S.movies){ warm(); return; }
+    loadMoviesData().then(warm).catch(function(){});
   }
   function enterFromProfile(){
     if(enterAnimRunning){ goHome(); return; }
     // En el mismo momento del toque empiezan a cargar por detrás
-    // los datos y las primeras imágenes de las tres secciones.
+    // SOLO las imágenes del escaparate del panel.
     startBackgroundLoads();
     var overlay = $("enter-anim"), word = $("enter-word"), pen = $("enter-pen");
     var letters = word.querySelectorAll("span");

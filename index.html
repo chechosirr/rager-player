@@ -62,6 +62,7 @@
   .msg.err{display:block; background:#3a1416; border:1px solid #7a2027; color:#ffb4ab;}
   .msg.info{display:block; background:#2a2410; border:1px solid #6b5a17; color:#ffe082;}
   .btn-ghost{background:transparent; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:13px; white-space:nowrap;}
+  #sec-back,#grid-back,#ep-back,#detail-back,#btn-pback,#btn-countries-back{padding-left:20px; padding-right:20px;}
   .btn-ghost:hover{border-color:var(--red);}
   .loading{text-align:center; color:var(--mut); padding:44px 10px; font-size:15px;}
   .empty{color:var(--mut); text-align:center; padding:40px 10px; font-size:15px; line-height:1.6;}
@@ -188,7 +189,6 @@
   .search-row input:focus{border-color:var(--red);}
   .btn-search{background:var(--red); color:#fff; border:none; border-radius:10px; padding:12px 20px; font-family:inherit; font-size:15px; font-weight:700; cursor:pointer; flex:none;}
   .btn-search:active{filter:brightness(1.18);}
-  .search-backbar{padding:2px 0 10px;}
   .row-block{margin-top:22px;}
   .row-title{font-size:var(--row-title); font-weight:700; padding:0 var(--pad); margin-bottom:12px;}
   /* Fila «Top 10 semanal» (pedido de Sergio): el título va en ROJO y
@@ -271,6 +271,9 @@
   .player-name{font-weight:700; font-size:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .player-sub{color:var(--mut); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .video-box{flex:1; display:flex; align-items:center; justify-content:center; min-height:0; position:relative;}
+  .vodbar{position:absolute; top:0; left:0; right:0; z-index:6; display:flex; align-items:center; gap:10px; padding:8px 12px; background:linear-gradient(180deg, rgba(0,0,0,.6), rgba(0,0,0,0));}
+  .vodbar input[type=range]{flex:1; min-width:0; accent-color:var(--red); height:26px;}
+  .vb-time{font-size:13px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.85); min-width:42px; text-align:center;}
   .video-box:fullscreen{background:#000;}
   .video-box:fullscreen video{width:100%; height:100%;}
   .video-box:-webkit-full-screen{background:#000;}
@@ -460,6 +463,11 @@
   </div>
   <div class="video-box" id="video-box">
     <video id="video" controls playsinline></video>
+    <div id="vodbar" class="vodbar hidden">
+      <span id="vb-cur" class="vb-time">0:00</span>
+      <input id="vb-range" type="range" min="0" max="1000" value="0" step="1" aria-label="Posición de la reproducción">
+      <span id="vb-dur" class="vb-time">—</span>
+    </div>
     <div id="dial"></div>
   </div>
   <div id="player-err" class="player-err"></div>
@@ -1057,7 +1065,8 @@
           if(!o || !o.id) return;
           out.push({ id: String(o.id), season: (o.season != null ? Number(o.season) : seasonNum),
                      number: (o.episode_num != null ? Number(o.episode_num) : i+1),
-                     title: o.title || "", extension: o.container_extension || "mp4" });
+                     title: o.title || "", extension: o.container_extension || "mp4",
+                     duration: (o.info ? (Number(o.info.duration_secs) || parseHMS(o.info.duration)) : 0) || 0 });
         });
       });
       out.sort(function(a, b){ return (a.season - b.season) || (a.number - b.number); });
@@ -1514,18 +1523,6 @@
     return block;
   }
 
-  /* Barra «Inicio» que encabeza los resultados de una búsqueda:
-     devuelve al inicio de la sección (las filas, sin texto). */
-  function searchBackBar(onBack){
-    var bar = document.createElement("div");
-    bar.className = "search-backbar";
-    var b = document.createElement("button");
-    b.type = "button"; b.className = "btn-ghost"; b.textContent = "Inicio";
-    b.addEventListener("click", onBack);
-    bar.appendChild(b);
-    return bar;
-  }
-
   /* ================================================================
      Parrilla genérica (Ver más / resultados / país / recientes)
      ================================================================ */
@@ -1733,6 +1730,7 @@
   }
   function renderLiveSection(body){
     body.innerHTML = "";
+    S.searchActive = false;
     var head = document.createElement("div");
     head.className = "sec-head";
     // Sin linea de cuenta bajo el titulo (pedido de Sergio, 3-nov):
@@ -1767,21 +1765,22 @@
 
     $("btn-countries").addEventListener("click", renderCountries);
     // La búsqueda SOLO corre al pulsar «Buscar» (o Enter): escribir no
-    // filtra nada. Tras buscar, «Inicio» devuelve al inicio de la
-    // sección (las filas, con el buscador vacío). Pedido de Sergio.
+    // filtra nada. Tras buscar, el «←» de la cabecera devuelve al
+    // inicio de la sección (las filas, con el buscador vacío).
     // Además del nombre, busca en la PROGRAMACIÓN que están dando los
     // canales ahora mismo (guía enlazada por nombre): esos resultados
     // se agregan al final con la etiqueta «▶ Ahora: …».
     function backLiveSearch(){
+      S.searchActive = false;
       $("live-search").value = "";
       searchHost.classList.add("hidden");
       searchHost.innerHTML = "";
       rowsHost.classList.remove("hidden");
       window.scrollTo(0, 0);
     }
+    S.backSearch = backLiveSearch;
     function renderLiveResults(nameList, progList, pendingGuide){
       searchHost.innerHTML = "";
-      searchHost.appendChild(searchBackBar(backLiveSearch));
       if(!nameList.length && !progList.length){
         var e = document.createElement("div");
         e.className = "empty";
@@ -1799,6 +1798,7 @@
     function runLiveSearch(){
       var q = $("live-search").value;
       if(!q.trim()){ backLiveSearch(); return; }
+      S.searchActive = true;
       rowsHost.classList.add("hidden");
       searchHost.classList.remove("hidden");
       var query = norm(q);
@@ -1930,6 +1930,7 @@
     return { title: s.name, poster: s.cover || "", sub: "", onClick: onClick || function(){ openSeries(s); } };
   }
   function renderVodSection(body, kind){
+    S.searchActive = false;
     // kind: "movies" | "series"
     var data = (kind === "movies") ? S.movies : S.series;
     var items = data.items;
@@ -1998,8 +1999,9 @@
     buildRows();
 
     // Igual que en canales: solo se busca al pulsar «Buscar» (o Enter)
-    // y «Inicio» devuelve al inicio de la sección.
+    // y el «←» de la cabecera devuelve al inicio de la sección.
     function backVodSearch(){
+      S.searchActive = false;
       $("vod-search").value = "";
       searchHost.classList.add("hidden");
       searchHost.innerHTML = "";
@@ -2009,12 +2011,12 @@
     function runVodSearch(){
       var q = $("vod-search").value;
       if(!q.trim()){ backVodSearch(); return; }
+      S.searchActive = true;
       rowsHost.classList.add("hidden");
       searchHost.classList.remove("hidden");
       var query = norm(q);
       var list = items.filter(function(it){ return norm(it.name).indexOf(query) >= 0; });
       searchHost.innerHTML = "";
-      searchHost.appendChild(searchBackBar(backVodSearch));
       if(!list.length){
         var e = document.createElement("div");
         e.className = "empty";
@@ -2030,6 +2032,7 @@
       searchHost.appendChild(grid);
       window.scrollTo(0, 0);
     }
+    S.backSearch = backVodSearch;
     $("btn-vod-search").addEventListener("click", runVodSearch);
     $("vod-search").addEventListener("keydown", function(ev){
       if(ev.key === "Enter"){ ev.preventDefault(); runVodSearch(); }
@@ -2189,7 +2192,8 @@
     movie: null, episode: null, seriesItem: null,
     resumePos: 0, returnTarget: "section:live",
     dialStr: "", dialTimer: null, saveTimer: null, triedAlt: false,
-    bakedSeek: false, seekBase: 0
+    bakedSeek: false, seekBase: 0,
+    contentDur: 0, isRemux: false, vbScrubbing: false, durationKey: ""
   };
   function videoEl(){ return $("video"); }
   function stopPlayer(){
@@ -2212,6 +2216,78 @@
     pe.textContent = msg;
     pe.className = "player-err show";
   }
+  /* Barra de posición del VOD: las conversiones del puente llegan como
+     lista HLS «en vivo» y los controles nativos no muestran por qué
+     minuto va ni dejan saltar; esta barra sí (pedido de Sergio, 3-nov).
+     En las conversiones, saltar = reiniciar la conversión en ese
+     segundo (ss=); en los archivos directos se mueve el video. */
+  function fmtT(s){
+    s = Math.max(0, Math.floor(Number(s) || 0));
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    return (h > 0 ? h + ":" + String(m).padStart(2, "0") : String(m)) + ":" + String(ss).padStart(2, "0");
+  }
+  function parseHMS(x){
+    if(x == null) return 0;
+    if(typeof x === "number") return Math.floor(x);
+    var t = String(x).trim();
+    if(/^\d+$/.test(t)) return parseInt(t, 10);
+    var parts = t.split(":").map(function(n){ return parseInt(n, 10) || 0; });
+    var acc = 0;
+    for(var i = 0; i < parts.length; i++) acc = acc * 60 + parts[i];
+    return acc;
+  }
+  function vodPosition(){
+    var v = videoEl();
+    return (P.bakedSeek ? (P.seekBase || 0) : 0) + (v.currentTime || 0);
+  }
+  function updateVodBar(){
+    if(!(P.kind === "movie" || P.kind === "episode")) return;
+    var v = videoEl();
+    if(!P.contentDur && !P.bakedSeek && isFinite(v.duration) && v.duration > 0) P.contentDur = Math.floor(v.duration);
+    if(P.vbScrubbing) return;
+    var pos = vodPosition();
+    $("vb-cur").textContent = fmtT(pos);
+    $("vb-dur").textContent = P.contentDur ? fmtT(P.contentDur) : "—";
+    var r = $("vb-range");
+    if(P.contentDur){ r.max = P.contentDur; r.value = Math.min(Math.floor(pos), P.contentDur); r.disabled = false; }
+    else { r.max = 1000; r.value = 0; r.disabled = true; }
+  }
+  function seekVodTo(sec){
+    sec = Math.max(0, Math.floor(sec));
+    if(P.isRemux){
+      P.resumePos = sec;
+      P.bakedSeek = false; P.seekBase = 0;
+      P.triedAlt = false;
+      var url = null;
+      if(P.kind === "movie" && P.movie) url = vodUrl("movie", P.movie.streamId, P.movie.extension);
+      else if(P.kind === "episode" && P.episode) url = vodUrl("series", P.episode.id, P.episode.extension);
+      if(url) attachSource(url, null);
+    } else {
+      try{ videoEl().currentTime = sec; }catch(e){}
+    }
+    setTimeout(updateVodBar, 60);
+  }
+  function fetchMovieDuration(id){
+    var key = "m" + id;
+    P.durationKey = key;
+    api("get_vod_info", "&vod_id=" + encodeURIComponent(id)).then(function(data){
+      if(P.durationKey !== key || !data || !data.info) return;
+      var d = Number(data.info.duration_secs) || parseHMS(data.info.duration);
+      if(d > 0 && !P.contentDur){ P.contentDur = Math.floor(d); updateVodBar(); }
+    }).catch(function(){});
+  }
+  var vbInit = false;
+  function initVodBar(){
+    if(vbInit) return;
+    vbInit = true;
+    var r = $("vb-range");
+    r.addEventListener("pointerdown", function(){ P.vbScrubbing = true; });
+    r.addEventListener("input", function(){ if(P.contentDur) $("vb-cur").textContent = fmtT(Number(r.value)); });
+    r.addEventListener("change", function(){ P.vbScrubbing = false; if(P.contentDur) seekVodTo(Number(r.value)); });
+    r.addEventListener("blur", function(){ P.vbScrubbing = false; });
+    videoEl().addEventListener("timeupdate", updateVodBar);
+    videoEl().addEventListener("loadedmetadata", updateVodBar);
+  }
   function attachSource(url, altUrl){
     var v = videoEl();
     if(hls){ try{ hls.destroy(); }catch(e){} hls = null; }
@@ -2227,6 +2303,7 @@
     }
     var isHls = /\.m3u8($|\?)/i.test(url);
     var isRemux = url.indexOf("/remux/") >= 0;
+    P.isRemux = isRemux;
     if(isHls && !(v.canPlayType("application/vnd.apple.mpegurl")) && window.Hls && Hls.isSupported()){
       // En las conversiones del puente (lista EVENT que va creciendo)
       // hay que empezar desde el primer segmento, no desde el borde en vivo.
@@ -2256,7 +2333,9 @@
   function showPlayerUI(){
     renderChips();
     showView("view-player");
+    $("vodbar").classList.toggle("hidden", !(P.kind === "movie" || P.kind === "episode"));
     P.open = true;
+    updateVodBar();
   }
   function playLiveChannel(ch){
     if(!P.open) P.returnTarget = captureReturn("live");
@@ -2356,6 +2435,7 @@
     var prev = null;
     recentsOf("movies").forEach(function(e){ if(String(e.sid) === String(m.streamId)) prev = e; });
     P.resumePos = prev && prev.pos ? prev.pos : 0;
+    P.contentDur = (prev && prev.dur && isFinite(prev.dur) && prev.dur > 0) ? Math.floor(prev.dur) : 0;
     pushRecent("movies", { sid: m.streamId, pos: P.resumePos || 0, dur: prev && prev.dur ? prev.dur : 0, ts: Date.now() },
                function(e){ return String(e.sid); });
     $("player-name").textContent = m.name;
@@ -2365,6 +2445,7 @@
     if(S.demo){ url = demoPlayUrl(m.streamId); }
     else { url = vodUrl("movie", m.streamId, m.extension); }
     attachSource(url, alt);
+    if(!S.demo) fetchMovieDuration(m.streamId);
     startSaveTimer();
   }
   function playEpisode(seriesItem, ep){
@@ -2377,6 +2458,7 @@
       if(String(e.seriesId) === String(seriesItem.seriesId) && String(e.epId) === String(ep.id)) prev = e;
     });
     P.resumePos = prev && prev.pos ? prev.pos : 0;
+    P.contentDur = ep.duration || ((prev && prev.dur && isFinite(prev.dur) && prev.dur > 0) ? Math.floor(prev.dur) : 0);
     pushRecent("series", { seriesId: seriesItem.seriesId, epId: ep.id, season: ep.season, num: ep.number,
                            pos: P.resumePos || 0, dur: prev && prev.dur ? prev.dur : 0, ts: Date.now() },
                function(e){ return String(e.seriesId) + "|" + String(e.epId); });
@@ -2559,7 +2641,12 @@
   $("modal-support").addEventListener("click", function(ev){ if(ev.target === this) closeSupportModal(); });
   $("account-close").addEventListener("click", closeAccountModal);
   $("modal-account").addEventListener("click", function(ev){ if(ev.target === this) closeAccountModal(); });
-  $("sec-back").addEventListener("click", goHome);
+  // Tras una búsqueda, el «←» primero devuelve al inicio de la
+  // sección (sin salir al panel); sin búsqueda, va al panel.
+  $("sec-back").addEventListener("click", function(){
+    if(S.searchActive && S.backSearch){ S.backSearch(); return; }
+    goHome();
+  });
   $("opt-live").addEventListener("click", function(){ openSection("live"); });
   $("opt-movies").addEventListener("click", function(){ openSection("movies"); });
   $("opt-series").addEventListener("click", function(){ openSection("series"); });
@@ -2581,6 +2668,7 @@
   $("detail-back").addEventListener("click", function(){ showView(detailState.from); });
   $("detail-play").addEventListener("click", function(){ if(detailState.movie) playMovie(detailState.movie); });
   $("btn-pback").addEventListener("click", function(){ closePlayer(); });
+  initVodBar();
   // Miniatura AUTOMÁTICA (pedido de Sergio): sin botón; al salir de la
   // página con el video reproduciendo, se intenta dejarlo flotando (PiP).
   function autoPip(){

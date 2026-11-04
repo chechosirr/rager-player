@@ -268,6 +268,49 @@
   .detail-meta{color:var(--mut); font-size:14px; margin-top:14px;}
   .detail-plot{color:#e8e8e8; line-height:1.55; margin-top:10px; font-size:15px;}
   .detail-play{display:inline-block; margin-top:20px; font-size:17px; padding:14px 30px;}
+  /* Presentación CINEMATOGRÁFICA del detalle — SOLO escritorio y TV
+     (pedido de Sergio 4-nov): en pantallas de 900px o más, al tocar una
+     película o serie la imagen ocupa TODA la pantalla como fondo, con
+     degradado oscuro, y encima van el título, los metadatos, la
+     descripción y el botón «Ver». En el teléfono la ficha queda como
+     estaba. La parrilla se logra sin tocar el HTML: la imagen es una
+     capa de la misma rejilla y el resto de elementos se apilan sobre
+     su zona inferior; la cabecera de marca flota transparente encima
+     y la flecha de volver queda sobre la imagen, arriba a la izquierda. */
+  @media (min-width:900px){
+    #view-detail, #view-episodes{position:relative;}
+    #view-detail .brandbar, #view-episodes .brandbar{position:absolute; top:0; left:0; right:0; z-index:20; background:linear-gradient(180deg, rgba(0,0,0,.68), rgba(0,0,0,0)); border-bottom:none;}
+    #view-detail .detail-hero::after, #view-episodes .detail-hero::after{content:""; position:absolute; inset:0; background:linear-gradient(to top, rgba(16,16,20,.97) 4%, rgba(16,16,20,.55) 38%, rgba(16,16,20,.05) 68%), linear-gradient(90deg, rgba(16,16,20,.78) 0%, rgba(16,16,20,0) 58%); pointer-events:none;}
+    /* La imagen va absoluta dentro de la capa: si quedara en el flujo,
+       su alto natural (un póster vertical grande) estiraría la rejilla
+       y la ficha saldría de miles de píxeles de alto. */
+    #view-detail .detail-hero img, #view-episodes .detail-hero img{position:absolute; inset:0;}
+    /* Película: la ficha entera ES la pantalla completa. */
+    #view-detail .detail-wrap{position:relative; max-width:none; padding:0; min-height:100vh; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:1fr auto auto auto;}
+    #view-detail .detail-hero{grid-column:1; grid-row:1 / -1; margin:0; border-radius:0; aspect-ratio:auto; z-index:0;}
+    #view-detail .grid-head{grid-column:1; grid-row:1; align-self:end; z-index:2; margin:0; padding:0 var(--pad); max-width:900px;}
+    #view-detail .grid-head .gtitle{font-size:clamp(38px, 4.2vw, 64px); line-height:1.05; font-weight:900; text-shadow:0 2px 18px rgba(0,0,0,.85);}
+    #detail-back{position:absolute; top:84px; left:var(--pad); z-index:5; background:rgba(0,0,0,.5); backdrop-filter:blur(4px);}
+    #view-detail .detail-meta{grid-column:1; grid-row:2; z-index:2; margin:16px var(--pad) 0; max-width:700px; font-size:17px; color:#d9d9e0; text-shadow:0 1px 8px rgba(0,0,0,.9);}
+    #view-detail .detail-plot{grid-column:1; grid-row:3; z-index:2; margin:12px var(--pad) 0; max-width:660px; font-size:18px; line-height:1.6; text-shadow:0 1px 8px rgba(0,0,0,.9); display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;}
+    #view-detail .detail-play{grid-column:1; grid-row:4; z-index:2; justify-self:start; margin:26px var(--pad) 52px; font-size:20px; padding:17px 44px; border-radius:12px; box-shadow:0 8px 28px rgba(0,0,0,.55);}
+    /* Serie: cabecera a pantalla completa y debajo, temporadas y episodios. */
+    #view-episodes .ep-wrap{position:relative; max-width:none; padding:0 0 70px; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(320px,52vh) auto auto auto 1fr;}
+    #view-episodes .detail-hero{grid-column:1; grid-row:1 / 4; margin:0; border-radius:0; aspect-ratio:auto; z-index:0;}
+    #view-episodes .grid-head{grid-column:1; grid-row:1; align-self:end; z-index:2; margin:0; padding:0 var(--pad); max-width:900px;}
+    #view-episodes .grid-head .gtitle{font-size:clamp(38px, 4.2vw, 64px); line-height:1.05; font-weight:900; text-shadow:0 2px 18px rgba(0,0,0,.85);}
+    #ep-back{position:absolute; top:84px; left:var(--pad); z-index:5; background:rgba(0,0,0,.5); backdrop-filter:blur(4px);}
+    #view-episodes .detail-meta{grid-column:1; grid-row:2; z-index:2; margin:16px var(--pad) 0; max-width:700px; font-size:17px; color:#d9d9e0; text-shadow:0 1px 8px rgba(0,0,0,.9);}
+    #view-episodes .detail-plot{grid-column:1; grid-row:3; z-index:2; margin:12px var(--pad) 0; max-width:660px; font-size:18px; line-height:1.6; text-shadow:0 1px 8px rgba(0,0,0,.9); display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;}
+    #view-episodes .season-chips{grid-column:1; grid-row:4; z-index:2; margin:28px var(--pad) 18px;}
+    #view-episodes #ep-list{grid-column:1; grid-row:5; z-index:2; padding:0 var(--pad); max-width:1040px; width:100%;}
+  }
+  @media (min-width:1400px){
+    #detail-back, #ep-back{top:98px;}
+    #view-detail .detail-plot, #view-episodes .detail-plot{font-size:21px; max-width:760px;}
+    #view-detail .detail-meta, #view-episodes .detail-meta{font-size:19px;}
+    #view-detail .detail-play{font-size:23px; padding:20px 54px;}
+  }
   .chip{background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:999px; padding:8px 16px; font-size:14px;}
   .chip.on{background:var(--red); border-color:var(--red); color:#fff; font-weight:700;}
   .ep-item{display:flex; align-items:center; gap:14px; width:100%; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:10px; text-align:left; color:var(--txt);}

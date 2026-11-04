@@ -2282,7 +2282,7 @@
   function updateVodBar(){
     if(!(P.kind === "movie" || P.kind === "episode")) return;
     var v = videoEl();
-    if(!P.contentDur && !P.bakedSeek && isFinite(v.duration) && v.duration > 0) P.contentDur = Math.floor(v.duration);
+    if(!P.contentDur && !P.bakedSeek && !P.isRemux && isFinite(v.duration) && v.duration > 0) P.contentDur = Math.floor(v.duration);
     if(P.vbScrubbing) return;
     var pos = vodPosition();
     $("vb-cur").textContent = fmtT(pos);
@@ -2312,7 +2312,9 @@
     api("get_vod_info", "&vod_id=" + encodeURIComponent(id)).then(function(data){
       if(P.durationKey !== key || !data || !data.info) return;
       var d = Number(data.info.duration_secs) || parseHMS(data.info.duration);
-      if(d > 0 && !P.contentDur){ P.contentDur = Math.floor(d); updateVodBar(); }
+      // La duración del panel MANDA: corrige también la sembrada desde
+      // «Recientes», que puede venir mala de reproducciones anteriores.
+      if(d > 0 && Math.floor(d) !== P.contentDur){ P.contentDur = Math.floor(d); updateVodBar(); }
     }).catch(function(){});
   }
   var vbInit = false;
@@ -2532,11 +2534,17 @@
     if(!P.open) return;
     var v = videoEl();
     var pos = (v.currentTime || 0) + (P.bakedSeek ? (P.seekBase || 0) : 0);
+    // En las conversiones del puente (lista «en vivo») v.duration NO es la
+    // duración real (en Safari es el borde de lo ya convertido y crece):
+    // guardar eso envenenaba «Recientes» (una película quedó con duración
+    // 377 s). Ahí la duración buena es la del panel (P.contentDur); en
+    // archivos directos sí vale v.duration.
+    var dur = P.isRemux ? (P.contentDur || 0) : v.duration;
     if(P.kind === "movie" && P.movie && pos > 0){
-      updateRecentPos("movies", String(P.movie.streamId), function(e){ return String(e.sid); }, pos, v.duration);
+      updateRecentPos("movies", String(P.movie.streamId), function(e){ return String(e.sid); }, pos, dur);
     } else if(P.kind === "episode" && P.episode && pos > 0){
       updateRecentPos("series", String(P.seriesItem.seriesId) + "|" + String(P.episode.id),
-        function(e){ return String(e.seriesId) + "|" + String(e.epId); }, pos, v.duration);
+        function(e){ return String(e.seriesId) + "|" + String(e.epId); }, pos, dur);
     }
   }
   function captureReturn(fallbackSection){

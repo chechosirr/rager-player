@@ -2760,15 +2760,23 @@
   }
   /* Intro con el logo antes de películas/series (pedido de Sergio, 3-nov):
      aparece SOLO la palabra RAGER en rojo sobre negro (pedido de
-     Sergio 3-nov: sin el logo del ojo), dura 3 s a la vista y se
-     desvanece LENTO (1,6 s) mientras el video carga por debajo. Los
-     canales en vivo NO lo muestran. */
+     Sergio 3-nov: sin el logo del ojo) y se mantiene a la vista
+     hasta que el video carga; entonces se despide teletransportándose
+     (disolución en brillo hacia arriba, ~1,6 s). Los canales en vivo
+     NO lo muestran. */
   var introTimers = [];
+  var introAwaiting = false;
   /* La intro de películas/series es SILENCIOSA (pedido de Sergio
-     4-nov: fuera el sonido «disolverse»); queda solo la imagen:
-     la palabra permanece 3 s y se teletransporta sin sonar. */
+     4-nov: fuera el sonido «disolverse»); queda solo la imagen.
+     La palabra se MANTIENE hasta que el video ya cargó (pedido de
+     Sergio 4-nov 10:37): en cuanto el video empieza a sonar,
+     releaseVodIntro() la despide con el efecto de siempre
+     (teletransporte: se disuelve en brillo hacia arriba, ~1,6 s).
+     Si la reproducción falla, playerFail() también la despide para
+     que se vea el error. */
   function hideVodIntro(){
     introTimers.forEach(function(t){ clearTimeout(t); }); introTimers = [];
+    introAwaiting = false;
     var el = $("vod-intro");
     if(!el) return;
     el.classList.remove("on"); el.classList.remove("out"); el.classList.remove("teleport"); el.classList.remove("bye"); el.classList.add("hidden");
@@ -2779,15 +2787,21 @@
     el.classList.remove("hidden");
     void el.offsetWidth; // reflow: que la entrada se anime desde opacidad 0
     el.classList.add("on");
-    // Coreografía (pedido de Sergio 4-nov): la palabra aparece sin
-    // animación de entrada, PERMANECE 3 s en su sitio y después
-    // DESAPARECE TELETRANSPORTÁNDOSE (se disuelve en brillo hacia
-    // arriba, ~1,6 s), en silencio.
-    introTimers.push(setTimeout(function(){ el.classList.add("teleport"); }, 3000));
-    introTimers.push(setTimeout(function(){ el.classList.remove("on"); el.classList.add("bye"); }, 4650));
-    introTimers.push(setTimeout(function(){ hideVodIntro(); }, 5200));
+    // Sin tiempo fijo: la palabra queda a la vista hasta que el
+    // video cargue (ver releaseVodIntro).
+    introAwaiting = true;
+  }
+  function releaseVodIntro(){
+    if(!introAwaiting) return;
+    introAwaiting = false;
+    var el = $("vod-intro");
+    if(!el) return;
+    introTimers.push(setTimeout(function(){ el.classList.add("teleport"); }, 0));
+    introTimers.push(setTimeout(function(){ el.classList.remove("on"); el.classList.add("bye"); }, 1650));
+    introTimers.push(setTimeout(function(){ hideVodIntro(); }, 2200));
   }
   function playerFail(msg){
+    releaseVodIntro();
     var pe = $("player-err");
     pe.textContent = msg;
     pe.className = "player-err show";
@@ -3232,7 +3246,7 @@
     if(P.watchTimer) return;
     P.watchTimer = setInterval(watchdogTick, 3000);
     var v = videoEl();
-    v.addEventListener("playing", function(){ P.playStarted = true; P.stallSince = 0; P.lastT = v.currentTime; });
+    v.addEventListener("playing", function(){ P.playStarted = true; P.stallSince = 0; P.lastT = v.currentTime; releaseVodIntro(); });
     document.addEventListener("visibilitychange", function(){
       if(document.hidden){
         P.wasPlayingBeforeHide = !!(P.open && !P.userPaused && !v.paused && !v.ended);

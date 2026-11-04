@@ -179,17 +179,16 @@
 
   /* ===== Secciones (filas) ===== */
   .section{padding:0 0 70px;}
-  /* Entrada ESPACIAL de sección (pedido de Sergio 4-nov): al entrar
-     desde el panel, el contenido viene como una nave desde el
-     espacio — lejos, chico y borroso, con brillo — y ATERRIZA de
-     pronto con un leve rebote, junto al sonido «Salto estelar». */
-  @keyframes space-land{
-    0%{ transform:scale(.1); opacity:0; filter:blur(7px) brightness(1.7); }
-    45%{ opacity:1; }
-    80%{ transform:scale(1.05); filter:blur(0) brightness(1.22); }
-    100%{ transform:scale(1); opacity:1; filter:none; }
-  }
-  #section-body.space-entry{ animation:space-land 1.15s cubic-bezier(.22,.9,.28,1) both; transform-origin:50% 32%; }
+  /* Nave WARP de la marca (pedido de Sergio 4-nov): las pantallas de
+     sección entran NORMALES; lo que viaja es la palabra Rager del
+     header — un puntito de luz en la esquina inferior derecha cruza
+     la pantalla con estela y ATERRIZA en su sitio, con el sonido
+     «Salto estelar». */
+  #view-section .brand.brand-away{ visibility:hidden; }
+  @keyframes brand-land{ 0%{ transform:scale(1.22); filter:brightness(2.1); } 100%{ transform:scale(1); filter:brightness(1); } }
+  #view-section .brand.brand-landed{ animation:brand-land .28s ease-out; }
+  .warp-ship{ position:fixed; left:0; top:0; z-index:200; pointer-events:none; color:var(--red); font-weight:800; letter-spacing:.3px; transform-origin:center center; text-shadow:0 0 10px rgba(255,64,64,.95), 0 0 26px rgba(255,64,64,.55), 0 0 46px rgba(255,64,64,.3); will-change:transform,opacity; }
+  .warp-ship .trail{ position:absolute; left:50%; top:50%; height:3px; border-radius:2px; background:linear-gradient(90deg, rgba(255,90,90,.9), rgba(255,90,90,0)); transform-origin:0 50%; filter:blur(.5px); }
   .sec-head{padding:16px var(--pad) 0;}
   .sec-title{font-size:var(--screen-title); font-weight:800;}
   .account-line{color:var(--mut); font-size:13.5px; margin-top:4px;}
@@ -2469,25 +2468,70 @@
   /* ================================================================
      Abrir una sección (carga datos y dibuja)
      ================================================================ */
+  /* La nave warp de la marca: un puntito de luz en la esquina
+     inferior derecha, cruza la pantalla con estela y la palabra
+     Rager aterriza en su sitio del header. */
+  function warpBrand(){
+    var brand = document.querySelector("#view-section .brand");
+    if(!brand) return;
+    var r = brand.getBoundingClientRect();
+    if(r.width < 4) return;
+    var cs = getComputedStyle(brand);
+    var endX = r.left + r.width / 2, endY = r.top + r.height / 2;
+    var startX = window.innerWidth - 24, startY = window.innerHeight - 24;
+    var dx = endX - startX, dy = endY - startY;
+    var angBack = Math.atan2(-dy, -dx) * 180 / Math.PI;
+    var ship = document.createElement("div");
+    ship.className = "warp-ship";
+    ship.style.width = r.width + "px";
+    ship.style.height = r.height + "px";
+    ship.style.fontSize = cs.fontSize;
+    ship.style.fontFamily = cs.fontFamily;
+    ship.style.lineHeight = r.height + "px";
+    ship.style.textAlign = "center";
+    ship.textContent = brand.textContent;
+    var trail = document.createElement("span");
+    trail.className = "trail";
+    trail.style.width = Math.min(190, Math.max(90, Math.hypot(dx, dy) * 0.22)) + "px";
+    trail.style.transform = "rotate(" + angBack + "deg)";
+    ship.appendChild(trail);
+    document.body.appendChild(ship);
+    brand.classList.add("brand-away");
+    function at(x, y, s){ return "translate(" + (x - r.width / 2) + "px," + (y - r.height / 2) + "px) scale(" + s + ")"; }
+    var holdX = startX + dx * 0.045, holdY = startY + dy * 0.045;
+    var anim = ship.animate([
+      { transform: at(startX, startY, 0.05), opacity: 0.95 },
+      { transform: at(holdX, holdY, 0.07), opacity: 1, offset: 0.22 },
+      { transform: at(endX, endY, 1.1), opacity: 1, offset: 0.86 },
+      { transform: at(endX, endY, 1), opacity: 1 }
+    ], { duration: 1450, easing: "cubic-bezier(.6,.02,.3,1)", fill: "forwards" });
+    trail.animate([
+      { opacity: 0 }, { opacity: 0.95, offset: 0.3 }, { opacity: 0.95, offset: 0.8 }, { opacity: 0 }
+    ], { duration: 1450, easing: "ease-out", fill: "forwards" });
+    anim.onfinish = function(){
+      ship.remove();
+      brand.classList.remove("brand-away");
+      brand.classList.remove("brand-landed");
+      void brand.offsetWidth;
+      brand.classList.add("brand-landed");
+      setTimeout(function(){ brand.classList.remove("brand-landed"); }, 320);
+    };
+  }
+
   function openSection(kind, warp){
     S.section = kind;
     renderChips();
     var body = $("section-body");
-    body.classList.remove("space-entry");
     body.innerHTML = '<div class="loading">Cargando…</div>';
     showView("view-section");
-    // Entrada espacial solo al presionar una sección en el panel:
-    // el salto estelar suena ya con el toque (gesto válido) y el
-    // contenido aterriza cuando termina de dibujarse.
-    if(warp) playWarpSound();
+    // Solo al presionar una sección en el panel: suena el Salto
+    // estelar y la marca del header entra como nave warp. La
+    // pantalla en sí entra normal, sin efecto.
+    if(warp){ playWarpSound(); warpBrand(); }
     var load = kind === "live" ? loadLiveData() : (kind === "movies" ? loadMoviesData() : loadSeriesData());
     load.then(function(){
       if(kind === "live") renderLiveSection(body);
       else renderVodSection(body, kind);
-      if(warp){
-        void body.offsetWidth;
-        body.classList.add("space-entry");
-      }
       // El escaparate del panel usa las portadas de películas: se precarga en segundo plano.
       if(!S.demo && kind === "live" && !S.movies){ loadMoviesData().catch(function(){}); }
     }).catch(function(){

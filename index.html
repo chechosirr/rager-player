@@ -257,13 +257,6 @@
   /* Horizontal FORZADO (iPhone): la caja del video se gira en la página;
      funciona aunque el teléfono tenga el bloqueo de rotación activado. */
   .video-box.force-land{position:fixed; z-index:400; background:#000; width:100vh; height:100vw; width:100dvh; height:100dvw; left:50%; top:50%; transform:translate(-50%,-50%) rotate(90deg);}
-  /* Botón para SALIR del modo horizontal: vive DENTRO de la caja del
-     video (la barra normal queda tapada por la caja girada) y solo
-     aparece en horizontal forzado o en pantalla completa. */
-  #btn-land-exit{position:absolute; top:calc(10px + env(safe-area-inset-top, 0px)); right:calc(12px + env(safe-area-inset-right, 0px)); z-index:6; display:none; background:rgba(0,0,0,.75); color:#fff; border:1px solid rgba(255,255,255,.4); border-radius:999px; padding:11px 18px; font-family:inherit; font-size:15px; font-weight:700; cursor:pointer;}
-  .video-box.force-land #btn-land-exit{display:block;}
-  .video-box:fullscreen #btn-land-exit{display:block;}
-  .video-box:-webkit-full-screen #btn-land-exit{display:block;}
   #video{width:100%; height:100%; background:#000;}
   #dial{position:absolute; pointer-events:none; top:18px; right:22px; background:rgba(0,0,0,.72); border:1px solid var(--amber); color:var(--amber); font-size:34px; font-weight:800; padding:6px 18px; border-radius:12px; letter-spacing:2px; display:none; z-index:3;}
   .player-err{margin:0; padding:12px 18px; background:#3a1416; color:#ffb4ab; font-size:14px; line-height:1.5; display:none;}
@@ -422,7 +415,6 @@
   <div class="video-box" id="video-box">
     <video id="video" controls playsinline></video>
     <div id="dial"></div>
-    <button id="btn-land-exit" type="button" aria-label="Salir del modo horizontal">✕ Salir</button>
   </div>
   <div id="player-err" class="player-err"></div>
 </section>
@@ -2234,12 +2226,6 @@
     window.visualViewport.addEventListener("scroll", sizeForceLand);
   }
   window.addEventListener("resize", sizeForceLand);
-  $("btn-land-exit").addEventListener("click", function(){
-    if ($("video-box").classList.contains("force-land")) { exitForceLand(); return; }
-    if (document.fullscreenElement || document.webkitFullscreenElement) {
-      if (document.exitFullscreen) document.exitFullscreen();
-    }
-  });
   $("btn-fs").addEventListener("click", function(){
     var v = $("video"), box = $("video-box");
     if (box.classList.contains("force-land")) { exitForceLand(); return; }

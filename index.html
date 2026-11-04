@@ -1013,6 +1013,13 @@
     return isNaN(f) ? 0 : f;
   }
   function liveUrl(sid){ return SERVER + "/live/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + sid + ".m3u8"; }
+  /* Ruta de RESPALDO de los canales en vivo: la conversión del puente.
+     Muchos canales llegan del reemisor del proveedor con segmentos
+     cuyos fotogramas clave no son IDR limpios y Safari los rechaza
+     al abrirlos (error 3, «Media failed to decode»); por esta ruta el
+     puente recodifica el canal y la señal sale limpia. attachSource
+     la usa sola cuando la señal directa falla. */
+  function liveRemuxUrl(sid){ return SERVER + "/liveremux/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + sid + ".m3u8"; }
   // Año de estreno desde el nombre («Título (2024)»): la lista de
   // películas del panel no trae año, pero el nombre suele llevarlo.
   function nameYear(name){
@@ -2924,7 +2931,8 @@
     $("player-name").textContent = ch.number + " · " + ch.name;
     $("player-sub").textContent = S.live.catName[String(ch.categoryId)] || "";
     showPlayerUI();
-    attachSource(S.demo ? demoChannelUrl(ch.streamId) : liveUrl(ch.streamId), null);
+    attachSource(S.demo ? demoChannelUrl(ch.streamId) : liveUrl(ch.streamId),
+                 S.demo ? null : liveRemuxUrl(ch.streamId));
     loadShortEpg(ch);
   }
   function zapByNumber(num){

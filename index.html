@@ -2394,9 +2394,17 @@
         attachSource(altUrl, null);
         return;
       }
-      playerFail(S.demo
+      // Diagnóstico (2026-11-04): se añade el código de error real del
+      // navegador al aviso, para saber POR QUÉ rechaza la señal en vez
+      // de adivinar (4=fuente no soportada, 3=decodificación, 2=red).
+      var det = "";
+      try{
+        var ve = v.error;
+        if(ve) det = " [error " + ve.code + (ve.message ? ": " + ve.message : "") + "]";
+      }catch(e){}
+      playerFail((S.demo
         ? "Esta señal de demostración no respondió. Prueba con otra del catálogo."
-        : MSG_BLOCKED_SHORT);
+        : MSG_BLOCKED_SHORT) + det);
     }
     var isHls = /\.m3u8($|\?)/i.test(url);
     var isRemux = url.indexOf("/remux/") >= 0;

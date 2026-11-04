@@ -197,7 +197,7 @@
      fuera el disco/recorte que la hacía ver como imagen incrustada).
      El fondo oscuro del video se funde con la pantalla por
      mix-blend-mode:screen + contraste, y queda solo la luz. */
-  #load-ball-video{ width:min(42vw,180px); height:auto; mix-blend-mode:screen; filter:contrast(1.32) brightness(1.12) saturate(1.15); opacity:0; transition:opacity .25s ease; animation:ballFloat 3.4s ease-in-out infinite; }
+  #load-ball-video{ width:min(42vw,180px); height:auto; mix-blend-mode:screen; filter:contrast(1.45) brightness(1.12) saturate(1.15); -webkit-mask-image:radial-gradient(circle, #000 52%, transparent 71%); mask-image:radial-gradient(circle, #000 52%, transparent 71%); opacity:0; transition:opacity .25s ease; animation:ballFloat 3.4s ease-in-out infinite; }
   #load-ball.show #load-ball-video{ opacity:1; }
   @keyframes ballFloat{ 0%,100%{ transform:translateY(-7px); } 50%{ transform:translateY(7px); } }
   #load-ball-fx{ position:absolute; inset:0; width:100%; height:100%; }

@@ -88,6 +88,17 @@
   .btn-main:disabled{opacity:.55; cursor:wait;}
   .btn-demo{width:100%; background:transparent; color:var(--txt); border:1px solid transparent; border-radius:10px; padding:12px; font-size:14px; font-weight:600; margin-top:10px; letter-spacing:.4px;}
   .btn-demo:hover{border-color:var(--line);}
+  /* Aviso de suscripción (cuenta sin IPTV válido): en teléfono,
+     botón directo a WhatsApp; en PC/TV, el número en grande — la
+     misma regla del botón de soporte (pedido de Sergio 4-nov). */
+  .sub-prompt{margin-top:16px; border:1px solid var(--line); background:#17171d; border-radius:12px; padding:16px; text-align:center;}
+  .sub-prompt-title{font-weight:800; font-size:16.5px; margin-bottom:6px;}
+  .sub-prompt p{margin:0 0 12px; color:var(--mut); font-size:14px; line-height:1.5;}
+  .sub-prompt-btn{display:block; background:#25d366; color:#06301b; font-weight:800; text-decoration:none; border-radius:10px; padding:13px; font-size:15.5px;}
+  .sub-prompt-num{color:var(--mut); font-size:14px; line-height:1.5;}
+  .sub-prompt-num b{display:block; color:#fff; font-size:25px; letter-spacing:.5px; margin-top:4px;}
+  .login-create{margin:14px 0 0; font-size:14px; color:var(--mut); text-align:center;}
+  .login-create a{color:#fff; font-weight:700;}
   .login-note{margin-top:18px; color:var(--mut); font-size:12.5px; line-height:1.5; max-width:380px; text-align:center;}
 
   /* ===== Cabecera de marca (pantallas internas) ===== */
@@ -488,8 +499,8 @@
     <div class="login-sub">Televisión en vivo, películas y series desde tu navegador</div>
     <form id="login-form" autocomplete="off">
       <div class="field">
-        <label for="in-user">Usuario de tu línea</label>
-        <input id="in-user" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" placeholder="Escribe tu usuario">
+        <label for="in-user">Correo de tu cuenta Rager</label>
+        <input id="in-user" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" placeholder="tucorreo@ejemplo.com">
       </div>
       <div class="field">
         <label for="in-pass">Contraseña</label>
@@ -499,8 +510,15 @@
     </form>
     <button id="btn-demo" class="btn-demo" type="button">VER DEMO</button>
     <div id="login-msg" class="msg"></div>
+    <div id="sub-prompt" class="sub-prompt hidden">
+      <div class="sub-prompt-title">Necesitas una suscripción para entrar</div>
+      <p id="sub-prompt-text"></p>
+      <a id="sub-prompt-btn" class="sub-prompt-btn" href="https://wa.me/15704698339?text=Hola%2C%20quiero%20adquirir%20una%20suscripci%C3%B3n%20de%20Rager" target="_blank" rel="noopener">Adquirir por WhatsApp</a>
+      <div id="sub-prompt-num" class="sub-prompt-num hidden">Escríbenos por WhatsApp a este número:<b>+1 (570) 469-8339</b></div>
+    </div>
+    <p class="login-create">¿Aún no tienes cuenta? <a href="https://ragerservices.net/cuenta.html">Crea tu cuenta Rager</a></p>
   </div>
-  <p class="login-note">Usa el mismo usuario y contraseña de tu línea Rager. Tus datos solo se usan para conectar con el servidor de señales.</p>
+  <p class="login-note">Entra con tu cuenta Rager: el correo y la contraseña que registraste en ragerservices.net. Nunca necesitas los datos de tu línea.</p>
 </section>
 
 <!-- ================= PERFILES ================= -->
@@ -713,7 +731,7 @@
     <button id="account-close" class="support-x" type="button" aria-label="Cerrar">✕</button>
     <div class="support-lead">Mi cuenta</div>
     <div class="account-rows">
-      <div class="account-row"><span>Nombre de usuario</span><b id="account-user"></b></div>
+      <div class="account-row"><span>Cuenta Rager</span><b id="account-user"></b></div>
       <div class="account-row"><span>Vencimiento de la cuenta</span><b id="account-exp"></b></div>
       <div class="account-row"><span>Conexiones disponibles</span><b id="account-conn"></b></div>
     </div>
@@ -741,7 +759,7 @@
 
   var MSG_BLOCKED = "No se pudo conectar con el servidor de señales. Revisa tu conexión a internet e inténtalo de nuevo; mientras tanto, puedes entrar con el botón VER DEMO.";
   var MSG_BLOCKED_SHORT = "No se pudo reproducir la señal. Revisa tu conexión e inténtalo de nuevo.";
-  var MSG_BAD_CREDENTIALS = "Usuario o contraseña incorrectos. Revisa los datos de tu línea e inténtalo de nuevo.";
+  var MSG_BAD_CREDENTIALS = "Correo o contraseña incorrectos. Revisa los datos de tu cuenta Rager e inténtalo de nuevo.";
   var MSG_NO_CONNECTION = "No se pudo conectar con el servidor de señales. Comprueba tu conexión e inténtalo de nuevo.";
 
   /* ================================================================
@@ -1077,7 +1095,7 @@
   function lsDel(key){ try{ localStorage.removeItem(key); }catch(e){} }
 
   // Sesión recordada (SessionStore): se guarda en el navegador como la app la guarda en el dispositivo.
-  function saveSession(){ lsSet("rager_sess", { u: S.user, p: S.pass }); }
+  function saveSession(){ if(S.token){ lsSet("rager_sess", { t: S.token, u: S.user }); } }
   function loadSession(){ return lsGet("rager_sess"); }
   function clearSession(){ lsDel("rager_sess"); }
 
@@ -1128,9 +1146,22 @@
   /* ================================================================
      API Xtream (player_api.php)
      ================================================================ */
+  // Con sesión de cuenta Rager, todo pasa por /t/<token>/…: el
+  // puente inyecta las credenciales de la línea en el servidor y el
+  // navegador nunca las ve (pedido de Sergio 4-nov).
+  function tpath(tail){ return SERVER + "/t/" + S.token + "/" + tail; }
   function api(action, extra){
-    var url = SERVER + "/player_api.php?username=" + encodeURIComponent(S.user) +
+    var url;
+    if(S.token){
+      url = tpath("player_api.php");
+      var qs = [];
+      if(action) qs.push("action=" + action);
+      if(extra) qs.push(String(extra).replace(/^&/, ""));
+      if(qs.length) url += "?" + qs.join("&");
+    } else {
+      url = SERVER + "/player_api.php?username=" + encodeURIComponent(S.user) +
               "&password=" + encodeURIComponent(S.pass) + (action ? "&action=" + action : "") + (extra || "");
+    }
     return fetch(url).then(function(r){
       if(!r.ok){ var e = new Error("http " + r.status); e.httpStatus = r.status; throw e; }
       return r.json();
@@ -1142,14 +1173,14 @@
     var f = parseFloat(r);
     return isNaN(f) ? 0 : f;
   }
-  function liveUrl(sid){ return SERVER + "/live/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + sid + ".m3u8"; }
+  function liveUrl(sid){ if(S.token) return tpath("live/" + sid + ".m3u8"); return SERVER + "/live/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + sid + ".m3u8"; }
   /* Ruta de RESPALDO de los canales en vivo: la conversión del puente.
      Muchos canales llegan del reemisor del proveedor con segmentos
      cuyos fotogramas clave no son IDR limpios y Safari los rechaza
      al abrirlos (error 3, «Media failed to decode»); por esta ruta el
      puente recodifica el canal y la señal sale limpia. attachSource
      la usa sola cuando la señal directa falla. */
-  function liveRemuxUrl(sid){ return SERVER + "/liveremux/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + sid + ".m3u8"; }
+  function liveRemuxUrl(sid){ if(S.token) return tpath("liveremux/" + sid + ".m3u8"); return SERVER + "/liveremux/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + sid + ".m3u8"; }
   // Año de estreno desde el nombre («Título (2024)»): la lista de
   // películas del panel no trae año, pero el nombre suele llevarlo.
   function nameYear(name){
@@ -1178,8 +1209,9 @@
     // como MP4 continuo se quedaba en «Cargando video...» en el iPhone.)
     // Si hay posición guardada, la conversión empieza en ese punto
     // (ss=) y el reproductor ya no busca de nuevo.
-    var u = SERVER + "/remux/" + kind + "/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) +
-            "/" + id + ".m3u8?ext=" + e;
+    var u = S.token ? tpath("remux/" + kind + "/" + id + ".m3u8?ext=" + e)
+            : SERVER + "/remux/" + kind + "/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) +
+              "/" + id + ".m3u8?ext=" + e;
     if(P.audioSel != null && P.audioSel >= 0) u += "&atrack=" + P.audioSel;
     if(P.resumePos && P.resumePos > 5){
       P.bakedSeek = true;
@@ -1188,8 +1220,8 @@
     }
     return u;
   }
-  function movieUrl(id, ext){ return SERVER + "/movie/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + id + "." + (ext || "mp4"); }
-  function seriesUrl(epId, ext){ return SERVER + "/series/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + encodeURIComponent(epId) + "." + (ext || "mp4"); }
+  function movieUrl(id, ext){ if(S.token) return tpath("movie/" + id + "." + (ext || "mp4")); return SERVER + "/movie/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + id + "." + (ext || "mp4"); }
+  function seriesUrl(epId, ext){ if(S.token) return tpath("series/" + encodeURIComponent(epId) + "." + (ext || "mp4")); return SERVER + "/series/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + encodeURIComponent(epId) + "." + (ext || "mp4"); }
 
   /* ================================================================
      ORGANIZACIÓN PROPIA DE CANALES (pedido de Sergio 4-nov)
@@ -3059,7 +3091,8 @@
   function fetchTitleMeta(kind, id, ext){
     if(S.demo) return;
     var seq = P.playSeq;
-    var url = SERVER + "/meta/" + kind + "/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) +
+    var url = S.token ? tpath("meta/" + kind + "/" + id + "?ext=" + (ext || "mp4").toLowerCase())
+            : SERVER + "/meta/" + kind + "/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) +
               "/" + id + "?ext=" + (ext || "mp4").toLowerCase();
     fetch(url).then(function(r){ return r.json(); }).then(function(m){
       if(P.playSeq !== seq || !m) return;
@@ -3159,7 +3192,8 @@
     var ext = ((P.kind === "movie" ? P.movie.extension : P.episode.extension) || "mp4").toLowerCase();
     var key = kind + ":" + id + ":" + P.subSel;
     P.cueKey = key;
-    var url = SERVER + "/subs/" + kind + "/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) +
+    var url = S.token ? tpath("subs/" + kind + "/" + id + "?ext=" + ext + "&track=" + P.subSel)
+            : SERVER + "/subs/" + kind + "/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) +
               "/" + id + "?ext=" + ext + "&track=" + P.subSel;
     fetch(url).then(function(r){ if(!r.ok) throw new Error("subs"); return r.text(); }).then(function(txt){
       if(P.cueKey !== key) return;
@@ -3718,7 +3752,7 @@
      corriendo sola hasta que la limpieza por inactividad la apagara. */
   function stopConversions(){
     if(S.demo || !S.user) return;
-    var url = SERVER + "/stop/" + encodeURIComponent(S.user);
+    var url = S.token ? tpath("stop") : SERVER + "/stop/" + encodeURIComponent(S.user);
     try{
       if(navigator.sendBeacon){ navigator.sendBeacon(url); return; }
     }catch(e){}
@@ -3744,6 +3778,21 @@
     m.textContent = text;
   }
   function clearMsg(){ var m = $("login-msg"); m.className = "msg"; m.textContent = ""; }
+  // Aviso de suscripción (pedido de Sergio 4-nov): cuando la cuenta
+  // no tiene un IPTV válido, en teléfono se ofrece el botón directo
+  // a WhatsApp y en PC/TV el número en grande (misma regla que el
+  // botón de soporte).
+  function showSubPrompt(text){
+    var box = $("sub-prompt");
+    if(!box) return;
+    $("sub-prompt-text").textContent = text || "Tu cuenta no tiene una suscripción IPTV válida.";
+    var isPhone = window.matchMedia("(pointer: coarse)").matches && window.innerWidth < 900;
+    $("sub-prompt-btn").classList.toggle("hidden", !isPhone);
+    $("sub-prompt-num").classList.toggle("hidden", isPhone);
+    box.classList.remove("hidden");
+    try{ box.scrollIntoView({ behavior: "smooth", block: "nearest" }); }catch(e){}
+  }
+  function hideSubPrompt(){ var b = $("sub-prompt"); if(b) b.classList.add("hidden"); }
   function enterApp(){
     renderChips();
     // Preselección del último perfil usado, como en la app.
@@ -3754,15 +3803,15 @@
     renderProfiles();
     showView("view-profiles");
   }
-  var lastAuthError = null;   // "credentials" | "network" | null (último intento de acceso)
-  function doLogin(u, p, silent){
-    S.user = u; S.pass = p; S.demo = false;
+  var lastAuthError = null;   // "credentials" | "network" | "noservice" | null (último intento de acceso)
+  // Con la sesión de la cuenta ya abierta, se valida la LÍNEA
+  // asociada (la API pasa por el token) y se entra a la app.
+  function finishAuth(silent){
     var btn = $("btn-login");
-    if(!silent){ btn.disabled = true; btn.textContent = "Conectando…"; }
     return api("").then(function(data){
       btn.disabled = false; btn.textContent = "ENTRAR";
-      if(data && data.user_info && Number(data.user_info.auth) === 1){
-        var ui = data.user_info;
+      var ui = data && data.user_info;
+      if(ui && Number(ui.auth) === 1 && (!ui.status || ui.status === "Active")){
         var expDays = null, expText = "";
         if(ui.exp_date){
           var expSec = Number(ui.exp_date);
@@ -3779,28 +3828,78 @@
         enterApp();
         return true;
       }
-      lastAuthError = "credentials";
-      if(!silent) showMsg("err", MSG_BAD_CREDENTIALS);
+      // La cuenta entró, pero su línea no es válida (vencida o inactiva).
+      lastAuthError = "noservice";
+      if(!silent) showSubPrompt("Tu suscripción IPTV no está válida en este momento (puede estar vencida). Para adquirir o renovar tu suscripción:");
       return false;
     }).catch(function(err){
       btn.disabled = false; btn.textContent = "ENTRAR";
-      // Respuesta HTTP no-OK (p. ej. 401 del panel) = credenciales no aceptadas;
-      // solo un fallo de red del propio fetch (sin respuesta) = problema de conexión.
       lastAuthError = (err && err.httpStatus) ? "credentials" : "network";
       if(!silent) showMsg("err", lastAuthError === "credentials" ? MSG_BAD_CREDENTIALS : MSG_NO_CONNECTION);
       return false;
     });
   }
+  // Acceso SOLO con cuentas del registro Rager (pedido de Sergio
+  // 4-nov): correo + contraseña de la cuenta; el puente responde con
+  // un token de sesión y las credenciales de la línea jamás salen
+  // del servidor.
+  function doLogin(u, p, silent){
+    S.demo = false; S.token = null; S.user = u; S.pass = "";
+    hideSubPrompt();
+    var btn = $("btn-login");
+    if(!silent){ btn.disabled = true; btn.textContent = "Conectando…"; }
+    return fetch(SERVER + "/cuentas/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: u, password: p })
+    }).then(function(r){
+      return r.json().catch(function(){ return {}; }).then(function(j){ return { ok: r.ok, j: j }; });
+    }).then(function(res){
+      if(!res.ok){
+        btn.disabled = false; btn.textContent = "ENTRAR";
+        var code = res.j && res.j.code;
+        if(code === "PENDING" || code === "NO_SERVICE" || code === "DISABLED"){
+          lastAuthError = "noservice";
+          if(!silent){
+            if(code === "PENDING") showSubPrompt("Tu cuenta está pendiente de activación y todavía no tiene una suscripción activa. Para adquirir tu suscripción o pedir tu activación:");
+            else if(code === "DISABLED") showSubPrompt("Tu cuenta está desactivada. Para adquirir o reactivar tu suscripción:");
+            else showSubPrompt("Esta cuenta no tiene una suscripción IPTV asociada. Para adquirir tu suscripción:");
+          }
+        } else {
+          lastAuthError = code === "RATE" ? "network" : "credentials";
+          if(!silent) showMsg("err", (res.j && res.j.error) || MSG_BAD_CREDENTIALS);
+        }
+        return false;
+      }
+      S.token = res.j.token; S.user = res.j.email || u; S.accName = res.j.name || "";
+      return finishAuth(silent);
+    }).catch(function(){
+      btn.disabled = false; btn.textContent = "ENTRAR";
+      lastAuthError = "network";
+      if(!silent) showMsg("err", MSG_NO_CONNECTION);
+      return false;
+    });
+  }
+  function doLoginToken(silent){
+    S.demo = false;
+    var btn = $("btn-login");
+    if(!silent){ btn.disabled = true; btn.textContent = "Conectando…"; }
+    return finishAuth(silent);
+  }
   function enterDemo(){
     clearMsg();
-    S.demo = true; S.user = ""; S.pass = ""; S.userInfo = null; S.profile = null;
+    hideSubPrompt();
+    S.demo = true; S.token = null; S.user = ""; S.pass = ""; S.userInfo = null; S.profile = null;
     S.live = null; S.movies = null; S.series = null; S.episodesCache = {};
     enterApp();
   }
   function logout(){
     stopPlayer();
+    if(S.token){
+      try{ fetch(SERVER + "/cuentas/logout", { method: "POST", headers: { "Authorization": "Bearer " + S.token } }).catch(function(){}); }catch(e){}
+    }
     var wasDemo = S.demo;
-    S.demo = false; S.user = ""; S.pass = ""; S.userInfo = null; S.profile = null;
+    S.demo = false; S.token = null; S.accName = ""; S.user = ""; S.pass = ""; S.userInfo = null; S.profile = null;
     S.live = null; S.movies = null; S.series = null; S.episodesCache = {};
     if(!wasDemo) clearSession();
     $("in-pass").value = "";
@@ -3816,7 +3915,7 @@
     clearMsg();
     var u = $("in-user").value.trim();
     var p = $("in-pass").value;
-    if(!u || !p){ showMsg("err", "Escribe tu usuario y tu contraseña para entrar."); return; }
+    if(!u || !p){ showMsg("err", "Escribe tu correo y tu contraseña para entrar."); return; }
     doLogin(u, p, false);
   });
   $("btn-demo").addEventListener("click", enterDemo);
@@ -4095,12 +4194,41 @@
     setTimeout(function(){ sp.classList.add("hidden"); }, 850);
   }
   function routeStart(){
+    // Llegada desde ragerservices.net con la sesión ya iniciada allí
+    // (enlace «Abrir reproductor» de la página de la cuenta).
+    if(location.hash && location.hash.indexOf("#acceso=") === 0){
+      var tok = decodeURIComponent(location.hash.slice(8));
+      try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){}
+      if(tok){
+        fetch(SERVER + "/cuentas/me", { headers: { "Authorization": "Bearer " + tok } })
+          .then(function(r){ return r.ok ? r.json() : null; })
+          .then(function(me){
+            if(me && me.email){
+              S.token = tok; S.user = me.email; S.accName = me.name || "";
+              doLoginToken(true).then(function(ok){ if(!ok){ clearSession(); S.token = null; showView("view-login"); } });
+            } else showView("view-login");
+          }).catch(function(){ showView("view-login"); });
+        return;
+      }
+    }
     var sess = loadSession();
-    if(sess && sess.u && sess.p){
-      $("in-user").value = sess.u;
-      doLogin(sess.u, sess.p, true).then(function(ok){
-        if(!ok){ clearSession(); showView("view-login"); showMsg("info", lastAuthError === "credentials" ? MSG_BAD_CREDENTIALS : MSG_NO_CONNECTION); }
+    if(sess && sess.t && sess.u){
+      S.token = sess.t; S.user = sess.u;
+      if($("in-user")) $("in-user").value = sess.u;
+      doLoginToken(true).then(function(ok){
+        if(!ok){
+          clearSession(); S.token = null; showView("view-login");
+          if(lastAuthError === "noservice") showSubPrompt("Tu suscripción IPTV no está válida en este momento (puede estar vencida). Para adquirir o renovar tu suscripción:");
+          else if(lastAuthError === "credentials") showMsg("info", "Tu sesión terminó. Entra de nuevo con tu cuenta Rager.");
+          else showMsg("info", MSG_NO_CONNECTION);
+        }
       });
+    } else if(sess && sess.u && sess.p){
+      // Sesión del sistema anterior (usuario de línea): ya no sirve;
+      // ahora se entra solo con la cuenta Rager del registro.
+      clearSession();
+      showView("view-login");
+      showMsg("info", "Ahora se entra con tu cuenta Rager (tu correo y tu contraseña). Si aún no tienes cuenta, créala en ragerservices.net.");
     } else {
       showView("view-login");
     }

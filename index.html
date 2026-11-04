@@ -257,7 +257,7 @@
   /* Horizontal FORZADO (iPhone): la caja del video se gira en la página;
      funciona aunque el teléfono tenga el bloqueo de rotación activado. */
   .video-box.force-land{position:fixed; z-index:400; background:#000; width:100vh; height:100vw; width:100dvh; height:100dvw; left:50%; top:50%; transform:translate(-50%,-50%) rotate(90deg);}
-  #video{width:100%; height:100%; background:#000;}
+  #video{width:100%; height:100%; background:#000; object-fit:contain;}
   #dial{position:absolute; pointer-events:none; top:18px; right:22px; background:rgba(0,0,0,.72); border:1px solid var(--amber); color:var(--amber); font-size:34px; font-weight:800; padding:6px 18px; border-radius:12px; letter-spacing:2px; display:none; z-index:3;}
   .player-err{margin:0; padding:12px 18px; background:#3a1416; color:#ffb4ab; font-size:14px; line-height:1.5; display:none;}
   .player-err.show{display:block;}
@@ -2231,15 +2231,7 @@
     if (box.classList.contains("force-land")) { exitForceLand(); return; }
     if (document.fullscreenElement || document.webkitFullscreenElement) {
       if (document.exitFullscreen) document.exitFullscreen();
-      return;
-    }
-    var canFs = typeof box.requestFullscreen === "function";
-    if (/iPhone|iPod/i.test(navigator.userAgent) || !canFs) {
-      // iPhone: ninguna página puede girar el sistema, así que se gira la
-      // caja del video dentro de la página (fuerza el horizontal aunque el
-      // teléfono tenga bloqueada la rotación). Si ya está apaisado, no hace
-      // falta girar nada.
-      if (window.innerWidth < window.innerHeight) enterForceLand();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
       return;
     }
     function lockLand(){
@@ -2250,9 +2242,22 @@
         }
       } catch(e) {}
     }
-    var p = box.requestFullscreen();
-    if (p && p.then) p.then(lockLand).catch(function(){});
-    else lockLand();
+    function fallbackLand(){
+      // Sin pantalla completa utilizable en este aparato: se gira la
+      // caja dentro de la página, medida con la pantalla visible. Vale
+      // igual para iPhone, iPad, Android sin pantalla completa y
+      // navegadores antiguos de escritorio: no depende del modelo.
+      if (window.innerWidth < window.innerHeight) enterForceLand();
+    }
+    // En CUALQUIER dispositivo: primero pantalla completa de verdad;
+    // si el aparato no la ofrece o la rechaza, horizontal forzado.
+    var req = box.requestFullscreen || box.webkitRequestFullscreen;
+    if (!req) { fallbackLand(); return; }
+    try {
+      var p = req.call(box);
+      if (p && p.then) p.then(lockLand).catch(fallbackLand);
+      else lockLand();
+    } catch(e) { fallbackLand(); }
   });
   window.addEventListener("orientationchange", function(){
     setTimeout(function(){

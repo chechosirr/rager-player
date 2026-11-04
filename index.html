@@ -530,6 +530,7 @@
     <div id="track-box" class="hidden">
       <button id="btn-audio" type="button" aria-label="Pista de audio"></button>
       <button id="btn-subs" type="button" aria-label="Subtítulos"></button>
+      <button id="btn-pip" type="button" aria-label="Ventana flotante"></button>
       <div id="track-menu" class="hidden"></div>
     </div>
     <div id="vod-cap"><span id="vod-cap-text"></span></div>
@@ -2581,9 +2582,52 @@
       return base;
     });
   }
+  /* Ventana flotante (PiP) CON botón (pedido de Sergio 4-nov): el
+     botón de arriba a la derecha, junto a audio y subtítulos, mete
+     el video en la ventana flotante y, estando flotante, el mismo
+     botón lo devuelve a su sitio. La ventana la mueve el sistema y
+     sigue reproduciendo aunque se salga de la página. Convive con
+     la miniatura AUTOMÁTICA de siempre: si el video entró flotando
+     solo (al salir de la página), el botón se marca con el aro rojo
+     y tocarlo lo trae de vuelta. */
+  function inPip(){
+    var v = videoEl();
+    return !!((document.pictureInPictureElement) ||
+      (v.webkitPresentationMode && v.webkitPresentationMode === "picture-in-picture"));
+  }
+  function pipSupported(){
+    var v = videoEl();
+    return !!((v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode("picture-in-picture")) ||
+      (v.requestPictureInPicture && document.pictureInPictureEnabled));
+  }
+  function syncPipButton(){
+    $("btn-pip").classList.toggle("on", inPip());
+  }
+  function togglePip(){
+    var v = videoEl();
+    try{
+      if(inPip()){
+        if(document.pictureInPictureElement && document.exitPictureInPicture){
+          var px = document.exitPictureInPicture(); if(px && px.catch) px.catch(function(){});
+        } else if(v.webkitSetPresentationMode){
+          v.webkitSetPresentationMode("inline");
+        }
+      } else if(v.webkitSetPresentationMode && v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode("picture-in-picture")){
+        v.webkitSetPresentationMode("picture-in-picture");
+      } else if(v.requestPictureInPicture){
+        var pr = v.requestPictureInPicture(); if(pr && pr.catch) pr.catch(function(){});
+      }
+    }catch(e){}
+    setTimeout(syncPipButton, 350);
+  }
   function updateTrackButtons(){
     var vod = (P.kind === "movie" || P.kind === "episode");
-    $("track-box").classList.toggle("hidden", !vod);
+    // La caja vive en las tres secciones por el botón de ventana
+    // flotante (siempre visible con los controles); los de audio y
+    // subtítulos solo existen en películas y series.
+    $("track-box").classList.remove("hidden");
+    $("btn-audio").classList.toggle("hidden", !vod);
+    $("btn-subs").classList.toggle("hidden", !vod);
     if(!vod) return;
     $("btn-audio").classList.toggle("off", !(P.tracks && P.tracks.audio.length > 1));
     $("btn-subs").classList.toggle("off", !(P.tracks && P.tracks.subs.length > 0));
@@ -2736,6 +2780,7 @@
     }
     if(found !== P.capIdx){ P.capIdx = found; paintCaption(found >= 0 ? cues[found].text : ""); }
   }
+  var TB_ICON_PIP = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.6" y="4.6" width="18.8" height="14.8" rx="3" fill="none" stroke="#fff" stroke-width="1.7"/><rect x="12.4" y="11.6" width="6.6" height="5" rx="1.2" fill="#fff"/></svg>';
   var TB_ICON_AUDIO = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="10" width="3.4" height="4" rx="1.7" fill="#fff"/><rect x="10.3" y="5.5" width="3.4" height="13" rx="1.7" fill="#fff"/><rect x="17.1" y="8.5" width="3.4" height="7" rx="1.7" fill="#fff"/></svg>';
   var TB_ICON_SUBS = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.6" y="5" width="18.8" height="14" rx="3.2" fill="none" stroke="#fff" stroke-width="1.7"/><text x="12" y="15.8" text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial, sans-serif">CC</text></svg>';
   var vbInit = false;
@@ -2780,6 +2825,12 @@
     $("btn-subs").innerHTML = TB_ICON_SUBS;
     $("btn-audio").addEventListener("click", function(){ openTrackMenu("audio"); });
     $("btn-subs").addEventListener("click", function(){ openTrackMenu("subs"); });
+    $("btn-pip").innerHTML = TB_ICON_PIP;
+    if(!pipSupported()) $("btn-pip").classList.add("hidden");
+    $("btn-pip").addEventListener("click", function(){ togglePip(); showVodBar(); });
+    v.addEventListener("webkitpresentationmodechanged", syncPipButton);
+    document.addEventListener("enterpictureinpicture", syncPipButton);
+    document.addEventListener("leavepictureinpicture", syncPipButton);
     v.addEventListener("volumechange", syncMute);
     $("vb-fs").addEventListener("click", function(){ enterHorizontal(); syncFsButtons(); showVodBar(); });
     $("vb-exitfs").addEventListener("click", function(){ exitHorizontal(); syncFsButtons(); showVodBar(); });
@@ -2947,7 +2998,7 @@
      a los 3 s mientras reproduce; en pausa queda visible. */
   function showVodBar(){
     $("vodbar").classList.add("show");
-    if(P.kind === "movie" || P.kind === "episode") $("track-box").classList.add("show");
+    $("track-box").classList.add("show");
     syncFsButtons();
     armVodBarHide();
   }
@@ -3025,6 +3076,7 @@
     $("player-name").textContent = ch.number + " · " + ch.name;
     $("player-sub").textContent = S.live.catName[String(ch.categoryId)] || "";
     showPlayerUI();
+    updateTrackButtons();
     attachSource(S.demo ? demoChannelUrl(ch.streamId) : liveUrl(ch.streamId),
                  S.demo ? null : liveRemuxUrl(ch.streamId));
     loadShortEpg(ch);

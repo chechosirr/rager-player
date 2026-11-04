@@ -2418,7 +2418,10 @@
     resumePos: 0, returnTarget: "section:live",
     dialStr: "", dialTimer: null, saveTimer: null, barTimer: null, triedAlt: false,
     bakedSeek: false, seekBase: 0,
-    contentDur: 0, isRemux: false, vbScrubbing: false, durationKey: ""
+    contentDur: 0, isRemux: false, vbScrubbing: false, durationKey: "",
+    userPaused: false, playStarted: false, lastT: -1, stallSince: 0,
+    recoveries: 0, lastReloadAt: 0, lastProgressAt: 0, wasPlayingBeforeHide: false,
+    onFatal: null, srcUrl: null, watchTimer: null
   };
   function videoEl(){ return $("video"); }
   function stopPlayer(){
@@ -2437,6 +2440,7 @@
     // metadatos del título NUEVO ya cargaron (P.metaReady).
     P.playSeq = (P.playSeq || 0) + 1;
     P.contentDur = 0; P.resumePos = 0; P.metaReady = false; P.isRemux = false;
+    P.userPaused = false; P.playStarted = false; P.lastT = -1; P.stallSince = 0; P.recoveries = 0;
     $("vb-cur").textContent = "0:00"; $("vb-dur").textContent = "—";
     var rr = $("vb-range"); rr.value = 0; paintRange(rr);
     // Pistas de audio/subtítulos: cada título empieza de cero.
@@ -2746,9 +2750,11 @@
     var v = videoEl();
     v.addEventListener("timeupdate", updateVodBar);
     v.addEventListener("loadedmetadata", updateVodBar);
-    // Botón propio de reproducir/pausar.
+    // Botón propio de reproducir/pausar. La pausa hecha AQUÍ es la
+    // única que el vigía respeta: cualquier otra parada (el sistema,
+    // la señal, salir de la página) se reanuda sola.
     $("vb-play").addEventListener("click", function(){
-      if(v.paused || v.ended){ v.play().catch(function(){}); } else { v.pause(); }
+      if(v.paused || v.ended){ P.userPaused = false; v.play().catch(function(){}); } else { P.userPaused = true; v.pause(); }
     });
     v.addEventListener("play", function(){ syncVbPlay(); armVodBarHide(); });
     v.addEventListener("playing", function(){ syncVbPlay(); armVodBarHide(); });
@@ -2802,6 +2808,8 @@
         ? "Esta señal de demostración no respondió. Prueba con otra del catálogo."
         : MSG_BLOCKED_SHORT) + det);
     }
+    P.onFatal = onFatal;
+    P.srcUrl = url;
     var isHls = /\.m3u8($|\?)/i.test(url);
     var isRemux = url.indexOf("/remux/") >= 0;
     P.isRemux = isRemux;
@@ -2848,6 +2856,92 @@
       try{ v.currentTime = P.resumePos; }catch(e){}
     }
     P.resumePos = 0;
+  }
+  /* ================================================================
+     VIGÍA DE REPRODUCCIÓN (pedido de Sergio 4-nov): si el video se
+     para solo — se congela cargando, el sistema lo pausa al salir de
+     la página o al volver, la señal se cae un momento — el
+     reproductor lo vuelve a arrancar SIN que haya que salirse y
+     volver a tocar el título. Solo se respeta la pausa hecha a
+     propósito con el botón de pausa (P.userPaused). Escalera:
+     1) play() otra vez (con startLoad/recoverMediaError si va por
+        hls.js); 2) recargar la fuente en el mismo punto (en VOD con
+        ss= nuevo, como al reanudar); 3) si tras varios intentos no
+        avanza, rendirse por la vía normal de error (P.onFatal) en
+        vez de girar en vacío con un contenido caído de verdad.
+     ================================================================ */
+  function startWatchdog(){
+    if(P.watchTimer) return;
+    P.watchTimer = setInterval(watchdogTick, 3000);
+    var v = videoEl();
+    v.addEventListener("playing", function(){ P.playStarted = true; P.stallSince = 0; P.lastT = v.currentTime; });
+    document.addEventListener("visibilitychange", function(){
+      if(document.hidden){
+        P.wasPlayingBeforeHide = !!(P.open && !P.userPaused && !v.paused && !v.ended);
+      } else if(P.open && P.wasPlayingBeforeHide && !P.userPaused){
+        // Al volver a la página: si el sistema lo dejó pausado, se
+        // reanuda; y si en unos segundos no avanza, el vigía recarga
+        // la fuente (el stallSince vencido lo dispara en el próximo
+        // pulso).
+        try{ v.play().catch(function(){}); }catch(e){}
+        P.stallSince = Date.now() - 8000;
+      }
+    });
+    window.addEventListener("pageshow", function(ev){
+      // Vuelta desde la caché del navegador (botón atrás del propio
+      // Safari): el elemento de video puede volver muerto; se
+      // recarga la fuente en el mismo punto.
+      if(ev.persisted && P.open && !P.userPaused) reloadCurrentSource();
+    });
+  }
+  function watchdogTick(){
+    var v = videoEl();
+    if(!P.open || document.hidden) return;
+    if(P.userPaused || P.vbScrubbing || v.ended || v.error){ P.stallSince = 0; P.lastT = v.currentTime; return; }
+    if(Math.abs(v.currentTime - P.lastT) > 0.05){
+      if(P.recoveries && Date.now() - (P.lastProgressAt || 0) > 30000) P.recoveries = 0;
+      P.lastProgressAt = Date.now();
+      P.lastT = v.currentTime; P.stallSince = 0;
+      return;
+    }
+    // La posición no avanza.
+    if(!P.playStarted){ P.stallSince = 0; return; } // aún no arrancó: manda el flujo normal de carga/error
+    if(!P.stallSince){ P.stallSince = Date.now(); return; }
+    if(Date.now() - P.stallSince < 8000) return;
+    recoverPlayback();
+  }
+  function recoverPlayback(){
+    var v = videoEl();
+    P.recoveries = (P.recoveries || 0) + 1;
+    P.stallSince = 0;
+    if(P.recoveries === 1){
+      if(hls){ try{ hls.startLoad(); }catch(e){} try{ hls.recoverMediaError(); }catch(e){} }
+      try{ v.play().catch(function(){}); }catch(e){}
+      return;
+    }
+    if(P.recoveries <= 3){ reloadCurrentSource(); return; }
+    // Se rinde: playStarted a falso apaga el vigía para este título
+    // (si no, volvería a intentarlo en bucle con un contenido caído).
+    P.playStarted = false;
+    if(P.onFatal){ var f = P.onFatal; P.recoveries = 0; f(); }
+  }
+  function reloadCurrentSource(){
+    var now = Date.now();
+    if(now - (P.lastReloadAt || 0) < 12000) return;
+    P.lastReloadAt = now;
+    P.triedAlt = false;
+    if(S.demo){ if(P.srcUrl) attachSource(P.srcUrl, null); return; }
+    if(P.kind === "live" && P.channel){
+      attachSource(liveUrl(P.channel.streamId), liveRemuxUrl(P.channel.streamId));
+    } else if(P.kind === "movie" && P.movie){
+      P.resumePos = Math.floor(vodPosition());
+      P.bakedSeek = false; P.seekBase = 0;
+      attachSource(vodUrl("movie", P.movie.streamId, P.movie.extension), null);
+    } else if(P.kind === "episode" && P.episode){
+      P.resumePos = Math.floor(vodPosition());
+      P.bakedSeek = false; P.seekBase = 0;
+      attachSource(vodUrl("series", P.episode.id, P.episode.extension), null);
+    }
   }
   /* Barra propia de VOD: se muestra al tocar la pantalla y se oculta sola
      a los 3 s mientras reproduce; en pausa queda visible. */
@@ -3278,6 +3372,7 @@
   $("detail-play").addEventListener("click", function(){ if(detailState.movie) playMovie(detailState.movie); });
   $("btn-pback").addEventListener("click", function(){ closePlayer(); });
   initVodBar();
+  startWatchdog();
   // Miniatura AUTOMÁTICA (pedido de Sergio): sin botón; al salir de la
   // página con el video reproduciendo, se intenta dejarlo flotando (PiP).
   function autoPip(){

@@ -210,6 +210,7 @@
   .ch-card .logo img{max-height:var(--logo-h); max-width:88%; object-fit:contain;}
   .ch-card .logo .nologo{width:52px; height:52px; border-radius:10px; background:var(--panel2); color:var(--red); font-weight:800; display:flex; align-items:center; justify-content:center; font-size:24px;}
   .ch-card .chname{font-size:var(--card-name); line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+  .ch-card .chnow{font-size:11px; color:var(--amber); padding:0 8px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .more-card{flex:0 0 auto; width:var(--more-w); height:var(--ch-h); background:var(--panel2); border:2px dashed #44444f; border-radius:12px; color:var(--txt); font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:center;}
   .more-card:hover, .more-card:focus-visible{border-color:var(--red); outline:none;}
 
@@ -1418,7 +1419,7 @@
     else fill();
     return block;
   }
-  function channelCard(ch, rank){
+  function channelCard(ch, rank, nowTitle){
     var b = document.createElement("button");
     b.type = "button"; b.className = "ch-card";
     var logo = ch.icon
@@ -1426,7 +1427,8 @@
       : '<div class="logo"><div class="nologo">' + esc((ch.name||"R").trim().charAt(0).toUpperCase()) + "</div></div>";
     b.innerHTML = (rank ? '<div class="chrank">' + rank + "</div>" : "") + logo +
       '<div class="chnum">' + ch.number + "</div>" +
-      '<div class="chname">' + esc(ch.name) + "</div>";
+      '<div class="chname">' + esc(ch.name) + "</div>" +
+      (nowTitle ? '<div class="chnow">▶ Ahora: ' + esc(nowTitle) + "</div>" : "");
     b.addEventListener("click", function(){ playLiveChannel(ch); });
     return b;
   }
@@ -1534,6 +1536,157 @@
   }
 
   /* ================================================================
+     GUÍA DE PROGRAMACIÓN (para buscar por lo que están dando)
+     La guía pública de ragerservices.net (el mismo Google Doc que lee
+     la página Guía TV) trae la programación de ~1.300 canales. Aquí se
+     enlaza cada canal del panel con su canal de la guía POR NOMBRE
+     (normalización estricta + guarda de país: si el país no coincide,
+     no se enlaza, para no mostrar la parrilla de otro país).
+     ================================================================ */
+  /* [GUIA-CORE-INICIO] funciones puras (probadas fuera del navegador) */
+  var GUIDE_MESES = { enero:0, febrero:1, marzo:2, abril:3, mayo:4, junio:5, julio:6, agosto:7, septiembre:8, setiembre:8, octubre:9, noviembre:10, diciembre:11 };
+  var GUIDE_PREFIX = { lat:1, latino:1, latam:1, usa:1, us:1, uk:1, es:1, mx:1, br:1, rd:1, tdt:1, vip:1, premium:1, "2mb":1, "4mb":1, hd:1 };
+  var GUIDE_TAIL = { hd:1, fhd:1, uhd:1, sd:1, "4k":1, hevc:1, "720p":1, "1080p":1, op:1, opc:1, op2:1, op3:1, op4:1, opc1:1, opc2:1, a:1, b:1, c:1, l:1 };
+  var GUIDE_COUNTRIES = ["republicadominicana", "estadosunidos", "puertorico", "costarica", "nicaragua", "honduras", "guatemala", "elsalvador", "colombia", "argentina", "venezuela", "paraguay", "uruguay", "ecuador", "bolivia", "espana", "mexico", "panama", "chile", "peru", "cuba", "eeuu", "dominicana"];
+  function gNorm(s){
+    return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+  }
+  function gKeyOf(name){
+    var toks = gNorm(name).split(" ").filter(Boolean);
+    while(toks.length && GUIDE_PREFIX[toks[0]]) toks.shift();
+    while(toks.length && GUIDE_TAIL[toks[toks.length - 1]]) toks.pop();
+    return toks.join("");
+  }
+  function gCountryOf(name){
+    var t = gNorm(name).replace(/ /g, "");
+    for(var i = 0; i < GUIDE_COUNTRIES.length; i++){
+      if(t.indexOf(GUIDE_COUNTRIES[i]) >= 0) return GUIDE_COUNTRIES[i];
+    }
+    return null;
+  }
+  function gSplitParen(name){
+    var m = /\(([^)]+)\)/.exec(name);
+    if(!m) return [String(name), null];
+    return [String(name).slice(0, m.index).trim(), m[1].trim()];
+  }
+  function gGuideCountry(name){
+    var m2 = /^(\d+)\s+de\s+(.+?)(\s*\(|$)/i.exec(name);
+    if(m2){ var c = gCountryOf(m2[2]); if(c) return c; }
+    var sp = gSplitParen(name);
+    if(sp[1]){ var c2 = gCountryOf(sp[1]); if(c2) return c2; }
+    return gCountryOf(name);
+  }
+  function gGoodKey(k){ return !!k && k.length >= 3 && !/^\d+$/.test(k); }
+  function buildGuideKeymap(guideNames){
+    var keymap = {};
+    var pass1 = {};
+    guideNames.forEach(function(g){
+      var k = gKeyOf(gSplitParen(g)[0]);
+      if(gGoodKey(k)){ (pass1[k] = pass1[k] || []).push(g); }
+    });
+    Object.keys(pass1).forEach(function(k){
+      if(pass1[k].length === 1) keymap[k] = { g: pass1[k][0], country: gGuideCountry(pass1[k][0]) };
+    });
+    var pass2 = {};
+    guideNames.forEach(function(g){
+      var sp = gSplitParen(g), paren = sp[1], ks = [];
+      if(paren && !gCountryOf(paren)){ var kb = gKeyOf(paren); if(gGoodKey(kb)) ks.push(kb); }
+      var m2 = /^(\d+)\s+de\s+(.+?)(\s*\(|$)/i.exec(g);
+      if(m2){
+        var kc = gKeyOf("canal " + m2[1] + " " + m2[2]); if(gGoodKey(kc)) ks.push(kc);
+        var kn = gKeyOf("canal " + m2[1]); if(gGoodKey(kn)) ks.push(kn);
+        if(paren && !gCountryOf(paren)){ var kb2 = gKeyOf(paren + " " + m2[1]); if(gGoodKey(kb2)) ks.push(kb2); }
+      }
+      ks.forEach(function(k){ (pass2[k] = pass2[k] || []).push(g); });
+    });
+    Object.keys(pass2).forEach(function(k){
+      if(pass2[k].length === 1 && !keymap[k]) keymap[k] = { g: pass2[k][0], country: gGuideCountry(pass2[k][0]) };
+    });
+    return keymap;
+  }
+  function gPanelKey(name){
+    if(/^\d{2}\/\d{2}\s/.test(name)) return null;
+    var s = String(name || ""), seps = ["|", ":", " - "];
+    for(var i = 0; i < seps.length; i++){
+      var idx = s.indexOf(seps[i]);
+      if(idx >= 0){
+        var head = s.slice(0, idx);
+        if(head.trim().length <= 16 && !/\d/.test(head)) s = s.slice(idx + seps[i].length);
+        break;
+      }
+    }
+    return gKeyOf(s) || null;
+  }
+  function parseGuideText(txt){
+    txt = String(txt || "").replace(/^﻿/, "");
+    var lines = txt.split("\n");
+    var m = /hoy \w+ (\d+) de (\w+) de (\d{4}) y ma[ñn]ana \w+ (\d+) de (\w+) de (\d{4})/i.exec(txt);
+    var ty, tm, td, oy, om, od;
+    if(m){ td = +m[1]; tm = GUIDE_MESES[m[2].toLowerCase()]; ty = +m[3]; od = +m[4]; om = GUIDE_MESES[m[5].toLowerCase()]; oy = +m[6]; }
+    else { var n = new Date(); ty = n.getFullYear(); tm = n.getMonth(); td = n.getDate(); oy = ty; om = tm; od = td + 1; }
+    var reM = /^mañana (\d{2}):(\d{2})\s*[–—-]\s*(\d{2}):(\d{2})\s*[—–-]\s*(.+)$/;
+    var reE = /^(?:(\d{2})\/(\d{2}) )?(\d{2}):(\d{2})\s*[–—-]\s*(?:(\d{2})\/(\d{2}) )?(\d{2}):(\d{2})\s*[—–-]\s*(.+)$/;
+    var channels = [], programs = {}, ch = null, lastProg = null;
+    lines.forEach(function(raw){
+      var line = raw.trim();
+      if(!line) return;
+      if(line.indexOf("CANAL:") === 0){
+        ch = line.slice(6).trim().replace(/^[^A-Za-z0-9À-ÿ]+/, "").trim();
+        if(ch && !programs[ch]){ programs[ch] = []; channels.push(ch); }
+        lastProg = null;
+        return;
+      }
+      if(!ch) return;
+      var r = reM.exec(line), sy, sm, sd, ey, em, ed, sh, smi, eh, emi, title;
+      if(r){ sy = oy; sm = om; sd = od; ey = oy; em = om; ed = od; sh = +r[1]; smi = +r[2]; eh = +r[3]; emi = +r[4]; title = r[5]; }
+      else {
+        r = reE.exec(line);
+        if(!r){
+          if(lastProg && !/^(GUÍA|Programación|Incluye)/.test(line)) lastProg.t += " " + line;
+          return;
+        }
+        if(r[1]){ sd = +r[1]; sm = +r[2] - 1; sy = ty; } else { sd = td; sm = tm; sy = ty; }
+        sh = +r[3]; smi = +r[4];
+        if(r[5]){ ed = +r[5]; em = +r[6] - 1; ey = ty; } else { ed = sd; em = sm; ey = sy; }
+        eh = +r[7]; emi = +r[8]; title = r[9];
+      }
+      var start = Date.UTC(sy, sm, sd, sh + 3, smi), end = Date.UTC(ey, em, ed, eh + 3, emi);
+      if(end <= start) end += 86400000;
+      lastProg = { t: title.trim(), s: start, e: end };
+      programs[ch].push(lastProg);
+    });
+    return { channels: channels, programs: programs };
+  }
+  /* [GUIA-CORE-FIN] */
+  var GUIDE_URL = "https://docs.google.com/document/d/1iI6Ok94RGIY4OMkQUQbHo2m0tNq3IBsV4lJ1q7PrmzE/export?format=txt";
+  function loadGuide(){
+    if(S.guidePromise) return S.guidePromise;
+    S.guidePromise = fetch(GUIDE_URL).then(function(r){ return r.text(); }).then(function(txt){
+      var parsed = parseGuideText(txt);
+      S.guidePrograms = parsed.programs;
+      S.guideKeymap = buildGuideKeymap(parsed.channels);
+      return S.guideKeymap;
+    }).catch(function(){ return null; });
+    return S.guidePromise;
+  }
+  /* Título del programa que un canal está dando AHORA según la guía
+     ("" si el canal no está enlazado o no hay programa en este momento). */
+  function guideNowTitle(chName){
+    if(!S.guideKeymap || !S.guidePrograms) return "";
+    var k = gPanelKey(chName);
+    if(!k) return "";
+    var ent = S.guideKeymap[k];
+    if(!ent) return "";
+    var pc = gCountryOf(chName);
+    if(pc && ent.country && pc !== ent.country) return "";
+    var progs = S.guidePrograms[ent.g] || [], now = Date.now();
+    for(var i = 0; i < progs.length; i++){
+      if(now >= progs[i].s && now < progs[i].e) return progs[i].t;
+    }
+    return "";
+  }
+
+  /* ================================================================
      TV EN VIVO
      ================================================================ */
   function countryOfChannel(ch){
@@ -1583,7 +1736,7 @@
 
     var srow = document.createElement("div");
     srow.className = "search-row";
-    srow.innerHTML = '<input id="live-search" type="search" placeholder="Buscar canal por nombre…" autocomplete="off">' +
+    srow.innerHTML = '<input id="live-search" type="search" placeholder="Buscar canal o programa en vivo…" autocomplete="off">' +
                      '<button id="btn-live-search" class="btn-search" type="button">Buscar</button>' +
                      '<button id="btn-countries" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Ver por países</button>';
     body.appendChild(srow);
@@ -1600,6 +1753,9 @@
     // La búsqueda SOLO corre al pulsar «Buscar» (o Enter): escribir no
     // filtra nada. Tras buscar, «← Volver» devuelve al inicio de la
     // sección (las filas, con el buscador vacío). Pedido de Sergio.
+    // Además del nombre, busca en la PROGRAMACIÓN que están dando los
+    // canales ahora mismo (guía enlazada por nombre): esos resultados
+    // se agregan al final con la etiqueta «▶ Ahora: …».
     function backLiveSearch(){
       $("live-search").value = "";
       searchHost.classList.add("hidden");
@@ -1607,26 +1763,46 @@
       rowsHost.classList.remove("hidden");
       window.scrollTo(0, 0);
     }
+    function renderLiveResults(nameList, progList, pendingGuide){
+      searchHost.innerHTML = "";
+      searchHost.appendChild(searchBackBar(backLiveSearch));
+      if(!nameList.length && !progList.length){
+        var e = document.createElement("div");
+        e.className = "empty";
+        e.textContent = pendingGuide
+          ? "Buscando también en la programación en vivo…"
+          : "Sin resultados para «" + $("live-search").value + "».";
+        searchHost.appendChild(e);
+        return;
+      }
+      var grid = document.createElement("div"); grid.className = "grid";
+      nameList.forEach(function(ch){ grid.appendChild(channelCard(ch)); });
+      progList.forEach(function(pair){ grid.appendChild(channelCard(pair.ch, null, pair.title)); });
+      searchHost.appendChild(grid);
+    }
     function runLiveSearch(){
       var q = $("live-search").value;
       if(!q.trim()){ backLiveSearch(); return; }
       rowsHost.classList.add("hidden");
       searchHost.classList.remove("hidden");
       var query = norm(q);
-      var list = S.live.master.filter(function(ch){ return norm(ch.name).indexOf(query) >= 0; });
-      searchHost.innerHTML = "";
-      searchHost.appendChild(searchBackBar(backLiveSearch));
-      if(!list.length){
-        var e = document.createElement("div");
-        e.className = "empty";
-        e.textContent = "Sin resultados para «" + q + "».";
-        searchHost.appendChild(e);
-        return;
-      }
-      var grid = document.createElement("div"); grid.className = "grid";
-      list.forEach(function(ch){ grid.appendChild(channelCard(ch)); });
-      searchHost.appendChild(grid);
+      var nameList = S.live.master.filter(function(ch){ return norm(ch.name).indexOf(query) >= 0; });
+      renderLiveResults(nameList, [], query.length >= 2);
       window.scrollTo(0, 0);
+      if(query.length < 2) return;
+      loadGuide().then(function(){
+        if($("live-search").value !== q || searchHost.classList.contains("hidden")) return;
+        if(!S.guideKeymap) { renderLiveResults(nameList, [], false); return; }
+        var seen = {};
+        nameList.forEach(function(ch){ seen[String(ch.streamId)] = 1; });
+        var progList = [];
+        S.live.master.forEach(function(ch){
+          if(seen[String(ch.streamId)]) return;
+          var t = guideNowTitle(ch.name);
+          if(t && norm(t).indexOf(query) >= 0) progList.push({ ch: ch, title: t });
+        });
+        renderLiveResults(nameList, progList, false);
+      });
     }
     $("btn-live-search").addEventListener("click", runLiveSearch);
     $("live-search").addEventListener("keydown", function(ev){

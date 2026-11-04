@@ -252,7 +252,8 @@
      imagen grande, metadatos, descripción y botón «Ver». */
   .detail-wrap{padding:18px var(--pad) 70px; max-width:860px;}
   .detail-hero{position:relative; border-radius:14px; overflow:hidden; background:#1b1b21; aspect-ratio:16/9; margin-top:12px;}
-  .detail-hero img{width:100%; height:100%; object-fit:cover; display:block;}
+  .detail-hero img{width:100%; height:100%; object-fit:cover; display:block; opacity:0; transition:opacity .35s ease;}
+  .detail-hero img.ready{opacity:1;}
   .detail-meta{color:var(--mut); font-size:14px; margin-top:14px;}
   .detail-plot{color:#e8e8e8; line-height:1.55; margin-top:10px; font-size:15px;}
   .detail-play{display:inline-block; margin-top:20px; font-size:17px; padding:14px 30px;}
@@ -287,7 +288,11 @@
   .vodbar input[type=range]::-moz-range-track{height:6px; border-radius:3px; background:rgba(255,255,255,.35);}
   .vodbar input[type=range]::-moz-range-progress{height:6px; border-radius:3px; background:#000;}
   .vodbar input[type=range]::-moz-range-thumb{width:12px; height:12px; border-radius:50%; background:var(--red); border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.55);}
-  #vb-play{flex:none; width:42px; height:42px; border-radius:50%; border:1px solid rgba(255,255,255,.4); background:rgba(18,18,24,.55); color:#fff; font-size:16px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer;}
+  /* Botón reproducir/pausar MINIMALISTA (pedido de Sergio 3-nov): solo
+     el símbolo en blanco, sin círculo ni fondo — los glifos de texto
+     ▶/⏸ se veían como iconos emoji pesados en iOS; ahora son SVG. */
+  #vb-play{flex:none; width:42px; height:42px; border:0; background:transparent; color:#fff; padding:0; display:flex; align-items:center; justify-content:center; cursor:pointer;}
+  #vb-play svg{width:26px; height:26px; display:block;}
   .vb-time{font-size:13px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.85); min-width:42px; text-align:center;}
   /* Intro con el logo antes de películas/series (pedido de Sergio, 3-nov):
      al darle «Ver» aparece el logo de Rager (ojo + marca) sobre fondo negro
@@ -487,7 +492,7 @@
   <div class="video-box" id="video-box">
     <video id="video" controls playsinline></video>
     <div id="vodbar" class="vodbar hidden">
-      <button id="vb-play" type="button" aria-label="Reproducir o pausar">▶</button>
+      <button id="vb-play" type="button" aria-label="Reproducir o pausar"></button>
       <span id="vb-cur" class="vb-time">0:00</span>
       <input id="vb-range" type="range" min="0" max="1000" value="0" step="1" aria-label="Posición de la reproducción">
       <span id="vb-dur" class="vb-time">—</span>
@@ -2106,7 +2111,11 @@
     // Cabecera de la vista previa: carátula grande de la serie y, cuando
     // llega la ficha del panel, descripción y metadatos.
     var hero = $("ep-hero"), heroImg = $("ep-hero-img");
-    if(item.cover){ heroImg.src = item.cover; hero.classList.remove("hidden"); }
+    if(S.demo){
+      if(item.cover){ setHeroImg(heroImg, item.cover); hero.classList.remove("hidden"); }
+      else { heroImg.removeAttribute("src"); hero.classList.add("hidden"); }
+    }
+    else if(item.cover){ setHeroImg(heroImg, ""); hero.classList.remove("hidden"); }
     else { heroImg.removeAttribute("src"); hero.classList.add("hidden"); }
     var epMeta = $("ep-meta"), epPlot = $("ep-plot");
     var meta0 = [];
@@ -2121,7 +2130,8 @@
         if(!root || !root.info || epState.item !== item) return;
         var info = root.info;
         var bd = (info.backdrop_path && info.backdrop_path[0]) || "";
-        if(bd){ heroImg.src = bd; hero.classList.remove("hidden"); }
+        if(bd){ setHeroImg(heroImg, bd); hero.classList.remove("hidden"); }
+        else if(item.cover){ setHeroImg(heroImg, item.cover); hero.classList.remove("hidden"); }
         var mm = [];
         var yr = String(info.releaseDate || info.releasedate || "").slice(0, 4);
         if(yr) mm.push(yr);
@@ -2243,9 +2253,9 @@
   }
   /* Intro con el logo antes de películas/series (pedido de Sergio, 3-nov):
      aparece SOLO la palabra RAGER en rojo sobre negro (pedido de
-     Sergio 3-nov: sin el logo del ojo), se queda ~1,5 s y se desvanece
-     LENTO (1,6 s) mientras el video carga por debajo. Los canales en
-     vivo NO lo muestran. */
+     Sergio 3-nov: sin el logo del ojo), dura 3 s a la vista y se
+     desvanece LENTO (1,6 s) mientras el video carga por debajo. Los
+     canales en vivo NO lo muestran. */
   var introTimers = [];
   function hideVodIntro(){
     introTimers.forEach(function(t){ clearTimeout(t); }); introTimers = [];
@@ -2259,8 +2269,10 @@
     el.classList.remove("hidden");
     void el.offsetWidth; // reflow: que la entrada se anime desde opacidad 0
     el.classList.add("on");
-    introTimers.push(setTimeout(function(){ el.classList.remove("on"); el.classList.add("out"); }, 1500));
-    introTimers.push(setTimeout(function(){ hideVodIntro(); }, 3300));
+    // La imagen dura 3 s a la vista (pedido de Sergio 3-nov) y luego se
+    // desvanece lento (1,6 s) mientras el video carga por debajo.
+    introTimers.push(setTimeout(function(){ el.classList.remove("on"); el.classList.add("out"); }, 3000));
+    introTimers.push(setTimeout(function(){ hideVodIntro(); }, 4800));
   }
   function playerFail(msg){
     var pe = $("player-err");
@@ -2433,8 +2445,10 @@
     if(v.paused || v.ended || P.vbScrubbing) return; // en pausa no se oculta
     P.barTimer = setTimeout(function(){ $("vodbar").classList.remove("show"); }, 3000);
   }
+  var VB_ICON_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="#fff"/></svg>';
+  var VB_ICON_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="#fff"/><rect x="14" y="5" width="4" height="14" rx="1" fill="#fff"/></svg>';
   function syncVbPlay(){
-    $("vb-play").textContent = videoEl().paused || videoEl().ended ? "▶" : "⏸";
+    $("vb-play").innerHTML = (videoEl().paused || videoEl().ended) ? VB_ICON_PLAY : VB_ICON_PAUSE;
   }
   function showPlayerUI(){
     renderChips();
@@ -2501,6 +2515,18 @@
      primero se muestra esta ficha (pedido de Sergio).
      ================================================================ */
   var detailState = { movie: null, from: "view-section" };
+  /* La portada de la ficha: se espera SIEMPRE al fondo panorámico del
+     panel antes de mostrar imagen. Antes salía primero el póster
+     vertical recortado en la caja 16/9 (se veía desproporcionado) y
+     «se acomodaba» cuando llegaba el fondo; ahora la caja sale bien
+     desde el inicio (oscura un instante) y el fondo entra con un
+     fundido. Si el panel no trae fondo, se usa el póster de reserva. */
+  function setHeroImg(img, src){
+    img.classList.remove("ready");
+    img.onload = function(){ img.classList.add("ready"); };
+    img.onerror = function(){ img.classList.add("ready"); };
+    if(src){ img.src = src; } else { img.removeAttribute("src"); }
+  }
   function openMovieDetail(m){
     detailState.movie = m;
     detailState.from = ["view-home", "view-grid", "view-section"].filter(function(v){
@@ -2508,7 +2534,7 @@
     })[0] || "view-section";
     $("detail-title").textContent = m.name;
     var img = $("detail-img");
-    if(m.icon) img.src = m.icon; else img.removeAttribute("src");
+    if(S.demo) setHeroImg(img, m.icon); else setHeroImg(img, "");
     var meta = [];
     if(m.year) meta.push(String(m.year));
     if(m.rating) meta.push("★ " + Number(m.rating).toFixed(1));
@@ -2525,7 +2551,7 @@
       if(!root || !root.info || detailState.movie !== m) return;
       var info = root.info;
       var bd = (info.backdrop_path && info.backdrop_path[0]) || info.cover || "";
-      if(bd) img.src = bd;
+      setHeroImg(img, bd || m.icon || "");
       var mm = [];
       var yr = String(info.releasedate || info.releaseDate || "").slice(0, 4);
       if(yr) mm.push(yr);

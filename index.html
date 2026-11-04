@@ -2978,6 +2978,7 @@
     }
     P.onFatal = onFatal;
     P.srcUrl = url;
+    P.attachAt = Date.now();
     var isHls = /\.m3u8($|\?)/i.test(url);
     var isRemux = url.indexOf("/remux/") >= 0;
     P.isRemux = isRemux;
@@ -3065,6 +3066,20 @@
   function watchdogTick(){
     var v = videoEl();
     if(!P.open || document.hidden) return;
+    /* Respaldo FORZADO a la señal convertida en canales (4-nov): hay
+       dos casos en los que el aviso de error del elemento de video no
+       llega o llega tarde y el canal se quedaba en el error 3 de la
+       señal directa sin pedir nunca la convertida al puente: (1) el
+       elemento queda con error pero el aviso único ya se consumió;
+       (2) la señal nunca arranca y tampoco da error. En ambos, el
+       vigía dispara la vía de error normal, que cambia sola a la
+       señal convertida (o muestra el aviso si ni así va). */
+    if(P.kind === "live" && P.open && !P.triedAlt && P.onFatal){
+      if(v.error){ var f1 = P.onFatal; P.onFatal = null; f1(); return; }
+      if(!P.playStarted && P.attachAt && Date.now() - P.attachAt > 25000){
+        var f2 = P.onFatal; P.onFatal = null; f2(); return;
+      }
+    }
     if(P.userPaused || P.vbScrubbing || v.ended || v.error){ P.stallSince = 0; P.lastT = v.currentTime; return; }
     if(Math.abs(v.currentTime - P.lastT) > 0.05){
       if(P.recoveries && Date.now() - (P.lastProgressAt || 0) > 30000) P.recoveries = 0;

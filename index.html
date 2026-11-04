@@ -288,7 +288,6 @@
   #vod-intro{position:absolute; inset:0; z-index:8; background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; opacity:0; pointer-events:none; transition:opacity .45s ease;}
   #vod-intro.on{opacity:1;}
   #vod-intro.out{opacity:0; transition:opacity 1.6s ease;}
-  #vod-intro img{width:min(34vw,128px); height:auto; object-fit:contain;}
   #intro-brand{color:var(--red); font-size:clamp(38px, 9vw, 62px); line-height:1;}
   .video-box:fullscreen{background:#000;}
   .video-box:fullscreen video{width:100%; height:100%;}
@@ -487,7 +486,6 @@
     </div>
     <div id="dial"></div>
     <div id="vod-intro" class="hidden">
-      <img id="intro-eye" alt="">
       <div id="intro-brand">Rager</div>
     </div>
   </div>
@@ -2236,9 +2234,10 @@
     P.open = false;
   }
   /* Intro con el logo antes de películas/series (pedido de Sergio, 3-nov):
-     aparece el logo de Rager (el ojo, tomado de la pantalla de acceso, +
-     la marca), se queda ~1,5 s y se desvanece LENTO (1,6 s) mientras el
-     video carga por debajo. Los canales en vivo NO lo muestran. */
+     aparece SOLO la palabra RAGER en rojo sobre negro (pedido de
+     Sergio 3-nov: sin el logo del ojo), se queda ~1,5 s y se desvanece
+     LENTO (1,6 s) mientras el video carga por debajo. Los canales en
+     vivo NO lo muestran. */
   var introTimers = [];
   function hideVodIntro(){
     introTimers.forEach(function(t){ clearTimeout(t); }); introTimers = [];
@@ -2249,11 +2248,6 @@
   function showVodIntro(){
     hideVodIntro();
     var el = $("vod-intro");
-    var img = $("intro-eye");
-    if(img && !img.getAttribute("src")){
-      var eye = document.querySelector(".login-eye");
-      if(eye && eye.getAttribute("src")) img.src = eye.getAttribute("src");
-    }
     el.classList.remove("hidden");
     void el.offsetWidth; // reflow: que la entrada se anime desde opacidad 0
     el.classList.add("on");

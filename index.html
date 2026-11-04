@@ -213,6 +213,7 @@
   .ch-card .logo .nologo{width:52px; height:52px; border-radius:10px; background:var(--panel2); color:var(--red); font-weight:800; display:flex; align-items:center; justify-content:center; font-size:24px;}
   .ch-card .chname{font-size:var(--card-name); line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
   .ch-card .chnow{font-size:11px; color:var(--amber); padding:0 8px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .ch-card .chevent{font-size:11px; font-weight:800; color:#ff5252; letter-spacing:.05em; white-space:nowrap;}
   .more-card{flex:0 0 auto; width:var(--more-w); height:var(--ch-h); background:var(--panel2); border:2px dashed #44444f; border-radius:12px; color:var(--txt); font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:center;}
   .more-card:hover, .more-card:focus-visible{border-color:var(--red); outline:none;}
 
@@ -1053,6 +1054,107 @@
   function movieUrl(id, ext){ return SERVER + "/movie/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + id + "." + (ext || "mp4"); }
   function seriesUrl(epId, ext){ return SERVER + "/series/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + encodeURIComponent(epId) + "." + (ext || "mp4"); }
 
+  /* ================================================================
+     ORGANIZACIÓN PROPIA DE CANALES (pedido de Sergio 4-nov)
+     El proveedor trae sus categorías (por país, bloques «OP2/GEO» y
+     bloques de eventos). Aquí los canales se reparten en NUESTRA
+     taxonomía y los de EVENTO quedan apartados con su distintivo
+     «SOLO EN EVENTO». Las reglas son las mismas en la web, en la app
+     y en el trabajo diario del servidor.
+     ================================================================ */
+  var TAXONOMY = ["Noticias", "Deportes", "Películas y Cine", "Series y Novelas",
+    "Farándula y Entretenimiento", "Infantil", "Música", "Cultura y Documentales",
+    "Religión", "EE. UU. y Canadá", "Latinoamérica y el Caribe", "España",
+    "Europa", "Resto del mundo", "Variedades", "Radios", "Adultos"];
+  function clsNorm(s){
+    return (s || "").toUpperCase().replace(/[^A-ZÁÉÍÓÚÜÑ0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+  var EVENT_CAT_RE = /(EVENT|EVENTO|PPV|SOLO EVENTOS)/;
+  var EVENT_NAME_RE = /(SOLO EN EVENTO|FUNCIONA EN EVENTO|\bEVENTOS?\b|\bPPV\b|ᴾᵖᵛ)/i;
+  function isCartelera(name){
+    var n = (name || "").trim();
+    if(/^\d{1,2}:\d{2}\b/.test(n)) return true;
+    var hasTime = /\d{1,2}:\d{2}\s*(AM|PM)/i.test(n);
+    var hasDate = /\b\d{1,2}\/\d{1,2}\b/.test(n);
+    var hasVs = /\bVS\b/i.test(n);
+    return (hasTime && hasVs) || (hasDate && (hasVs || hasTime));
+  }
+  function isEventChannel(ch, catName){
+    var cn = clsNorm(catName);
+    if(EVENT_CAT_RE.test(cn) || cn.indexOf("TEAMS NBA") === 0) return true;
+    if(EVENT_NAME_RE.test(ch.name || "")) return true;
+    return isCartelera(ch.name);
+  }
+  function isDailyEvent(ch, catName){
+    return isCartelera(ch.name) || clsNorm(catName) === "DEPORTES DIARIOS VIP";
+  }
+  var CAT_RULES = [
+    ["Adultos", ["ADULTOS", "XXX"]],
+    ["Radios", ["RADIO"]],
+    ["Noticias", ["NOTICIAS", "NEWS"]],
+    ["Religión", ["RELIGIOS"]],
+    ["Infantil", ["INFANTIL", "KIDS", "ANIMADOS"]],
+    ["Música", ["MUSICA", "MUSIC"]],
+    ["Cultura y Documentales", ["CULTURALES", "DOCUMENT"]],
+    ["Series y Novelas", ["NOVELAS", "SERIES"]],
+    ["Películas y Cine", ["CINE", "PELICULAS", "CINEMA", "HBO", "HALLOWEEN"]],
+    ["Deportes", ["DEPORTES", "SPORT", "ESPN", "FOX SPORTS", "DAZN", "UEFA",
+      "LIBERTADORES", "PREM1ER", "LIG4", "D SP0RTS", "S K Y SPORTS", "TIGO SPORTS", "WWE"]],
+    ["Farándula y Entretenimiento", ["REALITYS", "ENTRETENIMIENTO", "ENTERTEIMENT",
+      "ENTERTAINMENT", "TELEMUNDO", "UNIVISION", "PROGRAMAS LATINOS"]]
+  ];
+  var NAME_RULES = [
+    ["Adultos", ["XXX", "PLAYBOY"]],
+    ["Noticias", ["CNN", "NOTICIAS", "NEWS", "NTN24", "INFOBAE", "MILENIO",
+      "EURONEWS", "FRANCE 24", "TELESUR", "C5N", "CRONICA TV", "BBC",
+      "SKY NEWS", "FOX NEWS", "MSNBC", "BLOOMBERG", "VPI", "EVTV", "A24"]],
+    ["Deportes", ["ESPN", "FOX SPORTS", "BEIN", "DAZN", "TYC", "DIRECTV SPORTS",
+      "DSPORTS", "SKY SPORT", "SPORT", "NBA TV", "NFL", "UFC", "WWE", "GOL",
+      "WIN SPORTS", "TIGO SPORTS", "CLARO SPORTS", "AFIZZIONADOS",
+      "PREMIER LEAGUE", "LALIGA"]],
+    ["Infantil", ["CARTOON", "NICK", "DISNEY", "BOOMERANG", "TOONCAST", "KIDS",
+      "JUNIOR", "BABY", "ANIM", "POKEMON", "DISCOVERY KIDS"]],
+    ["Películas y Cine", ["HBO", "CINEMAX", "CINE", "MOVIE", "FILM", "TCM", "AMC",
+      "PARAMOUNT", "SPACE", "TNT", "GOLDEN", "MULTIPREMIER", "STUDIO",
+      "HALLMARK", "LIFETIME", "HORROR", "TERROR", "ISAT", "I SAT", "SYFY"]],
+    ["Series y Novelas", ["SONY", "AXN", "WARNER", "UNIVERSAL", "SERIES",
+      "NOVELA", "PASIONES", "TLN", "FX"]],
+    ["Música", ["MTV", "HTV", "VH1", "MUSIC", "MUSICA", "TELEHIT", "KARAOKE"]],
+    ["Cultura y Documentales", ["DISCOVERY", "HISTORY", "NAT GEO",
+      "NATIONAL GEOGRAPHIC", "ANIMAL PLANET", "INVESTIGATION", "FOOD",
+      "TRAVEL", "CULTURA", "DOCUMENT", "SCIENCE", "SMITHSONIAN",
+      "LOVE NATURE", "ODISEA"]],
+    ["Religión", ["EWTN", "ENLACE", "TBN", "CRISTIAN", "DAYSTAR", "3ABN",
+      "MARIA VISION", "FE TV"]],
+    ["Farándula y Entretenimiento", ["REALITY", "FARANDULA", "GALAVISION",
+      "LAS ESTRELLAS", "ESTRELLA TV"]]
+  ];
+  var LATAM_KEYS = ["MEXICO", "NICARAGUA", "GUATEMALA", "HONDURAS", "EL SALVADOR",
+    "COSTA RICA", "PANAMA", "COLOMBIA", "VENEZUELA", "ECUADOR", "PERU",
+    "BOLIVIA", "PARAGUAY", "URUGUAY", "CHILE", "ARGENTINA", "REP DOMINICANA",
+    "DOMINICANA", "PUERTO RICO", "CUBA", "BRASIL", "CURAZAO", "OTROS PAISES DE AMERICA"];
+  var EUROPA_KEYS = ["UNITED KINGDOM", "GERMANY", "FRANCE", "ITALY", "NETHERLANDS",
+    "PORTUGAL", "RUMANIA", "OTROS PAISES DE EUROPA"];
+  function regionOf(catName){
+    var cn = clsNorm(catName), i;
+    if(cn.indexOf("USA") >= 0 || cn.indexOf("UNITED STATES") >= 0 || cn.indexOf("CANADA") >= 0) return "EE. UU. y Canadá";
+    if(cn.indexOf("ESPAÑA") >= 0 || cn.indexOf("ESPANA") === 0) return "España";
+    for(i = 0; i < EUROPA_KEYS.length; i++) if(cn.indexOf(EUROPA_KEYS[i]) >= 0) return "Europa";
+    for(i = 0; i < LATAM_KEYS.length; i++) if(cn.indexOf(LATAM_KEYS[i]) >= 0) return "Latinoamérica y el Caribe";
+    if(cn.indexOf("AFRICA") >= 0 || cn.indexOf("ASIA") >= 0 || cn.indexOf("OCEANIA") >= 0) return "Resto del mundo";
+    return "Variedades";
+  }
+  function ownCategoryOf(ch, catName){
+    var cn = clsNorm(catName), i, j;
+    for(i = 0; i < CAT_RULES.length; i++)
+      for(j = 0; j < CAT_RULES[i][1].length; j++)
+        if(cn.indexOf(CAT_RULES[i][1][j]) >= 0) return CAT_RULES[i][0];
+    var nn = " " + clsNorm(ch.name) + " ";
+    for(i = 0; i < NAME_RULES.length; i++)
+      for(j = 0; j < NAME_RULES[i][1].length; j++)
+        if(nn.indexOf(" " + NAME_RULES[i][1][j] + " ") >= 0) return NAME_RULES[i][0];
+    return regionOf(catName);
+  }
   function loadLiveData(){
     if(S.live) return Promise.resolve(S.live);
     if(S.demo){
@@ -1068,6 +1170,7 @@
       }).filter(function(ch){ return ch.streamId !== 0; });
       var master = assignNumbersPersisted(cats, channels);
       S.live = wrapLive(cats, channels, master);
+      fetchDailyEvents();
       return S.live;
     });
   }
@@ -1075,7 +1178,41 @@
     var byNumber = {}, catName = {};
     master.forEach(function(ch){ byNumber[ch.number] = ch; });
     cats.forEach(function(c){ catName[String(c.id)] = c.name; });
-    return { cats: cats, channels: channels, master: master, byNumber: byNumber, catName: catName };
+    // Organización propia (4-nov): cada canal queda marcado como de
+    // EVENTO o con su categoría NUESTRA; los de evento salen de las
+    // categorías, del Top 10 y de «Ver por países».
+    master.forEach(function(ch){
+      var cn = catName[String(ch.categoryId)] || "";
+      ch.isEvent = isEventChannel(ch, cn);
+      ch.dailyEvent = isDailyEvent(ch, cn);
+      ch.own = ch.isEvent ? "" : ownCategoryOf(ch, cn);
+    });
+    var normals = master.filter(function(ch){ return !ch.isEvent; });
+    return { cats: cats, channels: channels, master: master, byNumber: byNumber, catName: catName,
+             normals: normals, probedIds: null };
+  }
+  /* Canales de la sección «Eventos del día»: la cartelera con fecha u
+     hora en el nombre (es la cartelera de hoy por construcción) más
+     los canales de evento que el trabajo diario del servidor encontró
+     CON señal hoy (eventos.json). */
+  function dailyEventChannels(){
+    var out = [];
+    if(!S.live) return out;
+    S.live.master.forEach(function(ch){
+      if(!ch.isEvent) return;
+      if(ch.dailyEvent || (S.live.probedIds && S.live.probedIds[String(ch.streamId)])) out.push(ch);
+    });
+    return out;
+  }
+  function fetchDailyEvents(){
+    if(S.demo) return;
+    fetch(SERVER + "/eventos.json").then(function(r){ return r.json(); }).then(function(j){
+      if(j && Array.isArray(j.ids) && S.live){
+        var set = {};
+        j.ids.forEach(function(id){ set[String(id)] = 1; });
+        S.live.probedIds = set;
+      }
+    }).catch(function(){});
   }
   function loadMoviesData(){
     if(S.movies) return Promise.resolve(S.movies);
@@ -1530,6 +1667,7 @@
     b.innerHTML = logo +
       '<div class="chnum">' + ch.number + "</div>" +
       '<div class="chname">' + esc(ch.name) + "</div>" +
+      (ch.isEvent ? '<div class="chevent">SOLO EN EVENTO</div>' : "") +
       (nowTitle ? '<div class="chnow">▶ Ahora: ' + esc(nowTitle) + "</div>" : "");
     b.addEventListener("click", function(){ playLiveChannel(ch); });
     return b;
@@ -1785,7 +1923,7 @@
   }
   function groupByCountry(){
     var groups = [], idx = {};
-    S.live.master.forEach(function(ch){
+    S.live.normals.forEach(function(ch){
       var c = countryOfChannel(ch);
       if(!c) return;
       if(idx[c] == null){ idx[c] = groups.length; groups.push({ country: c, channels: [] }); }
@@ -1823,7 +1961,8 @@
     srow.className = "search-row";
     srow.innerHTML = '<input id="live-search" type="search" placeholder="Buscar canal o programa en vivo…" autocomplete="off">' +
                      '<button id="btn-live-search" class="btn-search" type="button">Buscar</button>' +
-                     '<button id="btn-countries" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Ver por países</button>';
+                     '<button id="btn-countries" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Ver por países</button>' +
+                     '<button id="btn-events" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Eventos del día</button>';
     body.appendChild(srow);
 
     var rowsHost = document.createElement("div");
@@ -1835,6 +1974,7 @@
     body.appendChild(searchHost);
 
     $("btn-countries").addEventListener("click", renderCountries);
+    $("btn-events").addEventListener("click", renderDailyEvents);
     // La búsqueda SOLO corre al pulsar «Buscar» (o Enter): escribir no
     // filtra nada. Tras buscar, el «←» de la cabecera devuelve al
     // inicio de la sección (las filas, con el buscador vacío).
@@ -1903,8 +2043,8 @@
     if(!host) return;
     host.innerHTML = "";
     resetLazyRows();
-    // 1) Top 10 semanal (orden de puesto; sin «Ver más»)
-    var top = weeklyTopChannels(S.live.master);
+    // 1) Top 10 semanal (orden de puesto; sin «Ver más»; sin eventos)
+    var top = weeklyTopChannels(S.live.normals);
     if(top.length){
       host.appendChild(rowBlock("Top 10 semanal", top.map(function(ch, i){ return channelCard(ch, i+1); }), null));
     }
@@ -1916,26 +2056,28 @@
         S.gridReturn = "live";
       }));
     }
-    // 3) Filas por categoría TEMÁTICA (los países no van aquí)
-    var byCat = {};
-    S.live.master.forEach(function(ch){
-      var cid = String(ch.categoryId);
-      if(!byCat[cid]) byCat[cid] = [];
-      byCat[cid].push(ch);
+    // 3) Filas por NUESTRA taxonomía (los de evento quedan fuera: solo
+    // salen en «Eventos del día» y en la búsqueda, con su distintivo)
+    var byOwn = {};
+    S.live.normals.forEach(function(ch){
+      var b = ch.own || "Variedades";
+      if(!byOwn[b]) byOwn[b] = [];
+      byOwn[b].push(ch);
     });
-    S.live.cats.forEach(function(cat){
-      var list = byCat[String(cat.id)];
-      if(!list || !list.length) return;
-      if(countryOfCategory(cat.name)) return;   // es un país: vive en «Ver por países»
-      (function(catRef, full){
-        host.appendChild(lazyRowBlock(catRef.name, false, function(){
-          return full.slice(0, 20).map(function(ch){ return channelCard(ch); });
-        }, function(){
-          openGrid({ kind: "channels", title: catRef.name, items: full });
-          S.gridReturn = "live";
-        }));
-      })(cat, list);
+    TAXONOMY.forEach(function(bucket){
+      var full = byOwn[bucket];
+      if(!full || !full.length) return;
+      host.appendChild(lazyRowBlock(bucket, false, function(){
+        return full.slice(0, 20).map(function(ch){ return channelCard(ch); });
+      }, function(){
+        openGrid({ kind: "channels", title: bucket, items: full });
+        S.gridReturn = "live";
+      }));
     });
+  }
+  function renderDailyEvents(){
+    openGrid({ kind: "channels", title: "Eventos del día", items: dailyEventChannels() });
+    S.gridReturn = "live";
   }
   function renderCountries(){
     S.section = "countries";

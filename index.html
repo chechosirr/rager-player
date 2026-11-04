@@ -179,6 +179,11 @@
 
   /* ===== Secciones (filas) ===== */
   .section{padding:0 0 70px;}
+  /* Revelado con imágenes (pedido de Sergio 4-nov): la sección se
+     dibuja invisible y solo APARECE cuando sus primeras imágenes
+     ya cargaron — nada de pantallas con los huecos vacíos. */
+  #section-body{ transition:opacity .3s ease; }
+  #view-section.arming #section-body{ opacity:0; }
   /* Nave WARP de la marca (pedido de Sergio 4-nov): las pantallas de
      sección entran NORMALES; lo que viaja es la palabra Rager del
      header — un puntito de luz en la esquina inferior derecha cruza
@@ -1387,11 +1392,17 @@
     renderChips();
     showView("view-home");
     startBackdrop();
-    // En real, las portadas del escaparate se cargan en segundo plano (como en la app).
-    if(!S.demo && !S.movies){
-      loadMoviesData().then(function(){
-        if(!$("view-home").classList.contains("hidden")) startBackdrop();
-      }).catch(function(){});
+    // En real, los datos de las TRES secciones se precargan en
+    // segundo plano al llegar al panel: al entrar a una sección ya
+    // está todo a mano y el revelado con imágenes es casi inmediato.
+    if(!S.demo){
+      if(!S.movies){
+        loadMoviesData().then(function(){
+          if(!$("view-home").classList.contains("hidden")) startBackdrop();
+        }).catch(function(){});
+      }
+      if(!S.live) loadLiveData().catch(function(){});
+      if(!S.series) loadSeriesData().catch(function(){});
     }
     var opts = document.querySelectorAll(".home-opt");
     opts.forEach(function(o){ o.classList.remove("focused"); });
@@ -2516,10 +2527,31 @@
     };
   }
 
+  /* Espera a que las primeras imágenes de la sección estén
+     cargadas (las filas se llenan solas al entrar en pantalla):
+     se resuelve cuando las primeras `limit` ya cargaron, si a
+     los 500 ms no apareció ninguna (sección sin imágenes) o al
+     cumplirse el tope — la pantalla nunca se queda esperando. */
+  function waitFirstImages(container, limit, timeoutMs){
+    return new Promise(function(resolve){
+      var start = Date.now();
+      (function tick(){
+        var imgs = container.querySelectorAll("img");
+        var n = Math.min(imgs.length, limit), pending = 0;
+        for(var i = 0; i < n; i++){ if(!imgs[i].complete) pending++; }
+        var elapsed = Date.now() - start;
+        if((n > 0 && pending === 0) || (elapsed >= 500 && imgs.length === 0) || elapsed >= timeoutMs){ resolve(); return; }
+        setTimeout(tick, 60);
+      })();
+    });
+  }
+
   function openSection(kind, warp){
     S.section = kind;
     renderChips();
     var body = $("section-body");
+    var vs = $("view-section");
+    var seq = (S.sectionSeq = (S.sectionSeq || 0) + 1);
     body.innerHTML = '<div class="loading">Cargando…</div>';
     showView("view-section");
     // Solo al presionar una sección en el panel: suena el Salto
@@ -2528,11 +2560,21 @@
     if(warp){ playWarpSound(); warpBrand(); }
     var load = kind === "live" ? loadLiveData() : (kind === "movies" ? loadMoviesData() : loadSeriesData());
     load.then(function(){
+      // La sección se dibuja INVISIBLE y solo aparece cuando sus
+      // primeras imágenes ya cargaron (pedido de Sergio): el
+      // cliente nunca ve la pantalla con los huecos vacíos; el
+      // ingreso se retrasa lo justo detrás de la nave warp.
+      vs.classList.add("arming");
       if(kind === "live") renderLiveSection(body);
       else renderVodSection(body, kind);
       // El escaparate del panel usa las portadas de películas: se precarga en segundo plano.
       if(!S.demo && kind === "live" && !S.movies){ loadMoviesData().catch(function(){}); }
+      return waitFirstImages(body, 18, 1600);
+    }).then(function(){
+      if(seq === S.sectionSeq) vs.classList.remove("arming");
     }).catch(function(){
+      if(seq !== S.sectionSeq) return;
+      vs.classList.remove("arming");
       body.innerHTML = '<div class="empty" style="padding-top:60px;">' + esc(MSG_BLOCKED) + "</div>";
     });
   }

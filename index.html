@@ -293,6 +293,12 @@
      ▶/⏸ se veían como iconos emoji pesados en iOS; ahora son SVG. */
   #vb-play{flex:none; width:42px; height:42px; border:0; background:transparent; color:#fff; padding:0; display:flex; align-items:center; justify-content:center; cursor:pointer;}
   #vb-play svg{width:26px; height:26px; display:block;}
+  #vb-mute,#vb-fs,#vb-exitfs{flex:none; width:42px; height:42px; border:0; background:transparent; color:#fff; padding:0; display:flex; align-items:center; justify-content:center; cursor:pointer;}
+  #vb-mute svg,#vb-fs svg,#vb-exitfs svg{width:24px; height:24px; display:block;}
+  .vb-live{display:none; flex:1; min-width:0; text-align:center; color:#fff; font-weight:800; letter-spacing:.08em; font-size:13px;}
+  .vb-live .dot{color:var(--red);}
+  .vodbar.live-mode .vb-live{display:block;}
+  .vodbar.live-mode #vb-cur,.vodbar.live-mode #vb-range,.vodbar.live-mode #vb-dur{display:none;}
   .vb-time{font-size:13px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.85); min-width:42px; text-align:center;}
   /* Intro con el logo antes de películas/series (pedido de Sergio, 3-nov):
      al darle «Ver» aparece el logo de Rager (ojo + marca) sobre fondo negro
@@ -496,6 +502,10 @@
       <span id="vb-cur" class="vb-time">0:00</span>
       <input id="vb-range" type="range" min="0" max="1000" value="0" step="1" aria-label="Posición de la reproducción">
       <span id="vb-dur" class="vb-time">—</span>
+      <span id="vb-live" class="vb-live"><span class="dot">●</span> EN VIVO</span>
+      <button id="vb-mute" type="button" aria-label="Quitar o poner el sonido"></button>
+      <button id="vb-fs" type="button" aria-label="Ver en horizontal"></button>
+      <button id="vb-exitfs" type="button" aria-label="Salir del modo horizontal"></button>
     </div>
     <div id="dial"></div>
     <div id="vod-intro" class="hidden">
@@ -2370,20 +2380,28 @@
     v.addEventListener("playing", function(){ syncVbPlay(); armVodBarHide(); });
     v.addEventListener("pause", function(){ syncVbPlay(); showVodBar(); });
     v.addEventListener("ended", function(){ syncVbPlay(); showVodBar(); });
-    v.addEventListener("waiting", function(){ if(P.kind === "movie" || P.kind === "episode") showVodBar(); });
+    v.addEventListener("waiting", function(){ showVodBar(); });
     // Tocar la pantalla muestra la barra y la vuelve a ocultar sola,
     // igual que los demás controles del reproductor. Un toque dentro de
     // la propia barra no la oculta: solo renueva su tiempo visible.
     var box = $("video-box");
     box.addEventListener("pointerdown", function(ev){
-      if(!(P.kind === "movie" || P.kind === "episode")) return;
       if(ev.target.closest && ev.target.closest("#vodbar")){ showVodBar(); return; }
       if($("vodbar").classList.contains("show")){ hideVodBar(); } else { showVodBar(); }
     });
     box.addEventListener("mousemove", function(){
-      if(!(P.kind === "movie" || P.kind === "episode")) return;
       if(!$("vodbar").classList.contains("show")){ showVodBar(); } else { armVodBarHide(); }
     });
+    // Botones de sonido y de horizontal de la barra (las tres secciones).
+    $("vb-mute").addEventListener("click", function(){
+      v.muted = !v.muted; syncMute(); showVodBar();
+    });
+    v.addEventListener("volumechange", syncMute);
+    $("vb-fs").addEventListener("click", function(){ $("btn-fs").click(); syncFsButtons(); showVodBar(); });
+    $("vb-exitfs").addEventListener("click", function(){ exitHorizontal(); syncFsButtons(); showVodBar(); });
+    document.addEventListener("fullscreenchange", syncFsButtons);
+    document.addEventListener("webkitfullscreenchange", syncFsButtons);
+    syncMute(); syncFsButtons();
   }
   function attachSource(url, altUrl){
     var v = videoEl();
@@ -2443,8 +2461,8 @@
   /* Barra propia de VOD: se muestra al tocar la pantalla y se oculta sola
      a los 3 s mientras reproduce; en pausa queda visible. */
   function showVodBar(){
-    if(!(P.kind === "movie" || P.kind === "episode")) return;
     $("vodbar").classList.add("show");
+    syncFsButtons();
     armVodBarHide();
   }
   function hideVodBar(){
@@ -2463,18 +2481,52 @@
   function syncVbPlay(){
     $("vb-play").innerHTML = (videoEl().paused || videoEl().ended) ? VB_ICON_PLAY : VB_ICON_PAUSE;
   }
+  var VB_ICON_VOL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 4.2V4.8L7 9H3z" fill="#fff"/><path d="M15.8 9.2a4 4 0 0 1 0 5.6" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M18.2 6.6a7.6 7.6 0 0 1 0 10.8" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>';
+  var VB_ICON_MUTE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 4.2V4.8L7 9H3z" fill="#fff"/><path d="M16.2 9.8l5 5m0-5l-5 5" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/></svg>';
+  var VB_ICON_FS = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"/></svg>';
+  var VB_ICON_EXITFS = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M9 4v4a1 1 0 0 1-1 1H4M20 9h-4a1 1 0 0 1-1-1V4M15 20v-4a1 1 0 0 1 1-1h4M4 15h4a1 1 0 0 1 1 1v4"/></svg>';
+  $("vb-mute").innerHTML = VB_ICON_VOL;
+  $("vb-fs").innerHTML = VB_ICON_FS;
+  $("vb-exitfs").innerHTML = VB_ICON_EXITFS;
+  function syncMute(){
+    $("vb-mute").innerHTML = videoEl().muted ? VB_ICON_MUTE : VB_ICON_VOL;
+  }
+  /* Modo horizontal: el botón de SALIR de la barra solo aparece estando
+     ya en horizontal (pantalla completa real o vista girada), y el de
+     ENTRAR se esconde entonces; ambos viven en la barra que aparece y
+     desaparece al tocar la pantalla (pedido de Sergio, 3-nov). */
+  function inHorizontal(){
+    var box = $("video-box");
+    return !!((box && box.classList.contains("force-land")) || document.fullscreenElement || document.webkitFullscreenElement);
+  }
+  function exitHorizontal(){
+    var box = $("video-box");
+    if(box && box.classList.contains("force-land")){ exitForceLand(); return; }
+    if(document.fullscreenElement || document.webkitFullscreenElement){
+      if(document.exitFullscreen) document.exitFullscreen();
+      else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
+  }
+  function syncFsButtons(){
+    var h = inHorizontal();
+    $("vb-fs").style.display = h ? "none" : "flex";
+    $("vb-exitfs").style.display = h ? "flex" : "none";
+  }
   function showPlayerUI(){
     renderChips();
     showView("view-player");
     var isVod = (P.kind === "movie" || P.kind === "episode");
-    $("vodbar").classList.toggle("hidden", !isVod);
-    // En películas/series mandan los controles PROPIOS (la barra de abajo);
-    // los nativos se quedan solo para los canales en vivo.
-    if(isVod){ videoEl().removeAttribute("controls"); } else { videoEl().setAttribute("controls", ""); hideVodBar(); }
+    // Reproductor ÚNICO para las tres secciones (pedido de Sergio,
+    // 3-nov): la misma barra propia manda en canales en vivo, películas
+    // y series; los controles nativos no se usan en ninguna. En vivo no
+    // hay posición que regular: en su lugar va el distintivo «EN VIVO».
+    $("vodbar").classList.remove("hidden");
+    $("vodbar").classList.toggle("live-mode", !isVod);
+    videoEl().removeAttribute("controls");
     P.open = true;
     updateVodBar();
-    syncVbPlay();
-    if(isVod) showVodBar();
+    syncVbPlay(); syncMute(); syncFsButtons();
+    showVodBar();
   }
   function playLiveChannel(ch){
     if(!P.open) P.returnTarget = captureReturn("live");
@@ -2869,6 +2921,7 @@
     sizeForceLand();
     setTimeout(sizeForceLand, 60);
     setTimeout(sizeForceLand, 350);
+    syncFsButtons();
   }
   function exitForceLand(){
     var box = $("video-box");
@@ -2876,6 +2929,7 @@
     box.classList.remove("force-land");
     box.style.width = ""; box.style.height = "";
     box.style.left = ""; box.style.top = "";
+    syncFsButtons();
   }
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", sizeForceLand);

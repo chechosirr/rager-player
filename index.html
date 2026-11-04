@@ -3076,7 +3076,7 @@
        señal convertida (o muestra el aviso si ni así va). */
     if(P.kind === "live" && P.open && !P.triedAlt && P.onFatal){
       if(v.error){ var f1 = P.onFatal; P.onFatal = null; f1(); return; }
-      if(!P.playStarted && P.attachAt && Date.now() - P.attachAt > 25000){
+      if(!P.playStarted && P.attachAt && Date.now() - P.attachAt > 15000){
         var f2 = P.onFatal; P.onFatal = null; f2(); return;
       }
     }

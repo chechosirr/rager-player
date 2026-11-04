@@ -2758,12 +2758,13 @@
     var pe = $("player-err"); pe.className = "player-err"; pe.textContent = "";
     P.open = false;
   }
-  /* Intro con el logo antes de películas/series (pedido de Sergio, 3-nov):
+  /* Intro con el logo antes de reproducir (pedido de Sergio, 3-nov):
      aparece SOLO la palabra RAGER en rojo sobre negro (pedido de
      Sergio 3-nov: sin el logo del ojo) y se mantiene a la vista
      hasta que el video carga; entonces se despide teletransportándose
-     (disolución en brillo hacia arriba, ~1,6 s). Los canales en vivo
-     NO lo muestran. */
+     (disolución en brillo hacia arriba, ~1,6 s). Desde el 4-nov
+     11:03 también sale en los CANALES en vivo, al abrirlos y al
+     zapear, con la misma regla: fuera en cuanto el video suena. */
   var introTimers = [];
   var introAwaiting = false;
   /* La intro de películas/series es SILENCIOSA (pedido de Sergio
@@ -3411,6 +3412,7 @@
     $("player-name").textContent = ch.number + " · " + ch.name;
     $("player-sub").textContent = S.live.catName[String(ch.categoryId)] || "";
     showPlayerUI();
+    showVodIntro();
     updateTrackButtons();
     attachSource(S.demo ? demoChannelUrl(ch.streamId) : liveUrl(ch.streamId),
                  S.demo ? null : liveRemuxUrl(ch.streamId));

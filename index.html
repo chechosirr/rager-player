@@ -185,8 +185,6 @@
      la pantalla con estela y ATERRIZA en su sitio, con el sonido
      «Salto estelar». */
   #view-section .brand.brand-away{ visibility:hidden; }
-  @keyframes brand-land{ 0%{ transform:scale(1.22); filter:brightness(2.1); } 100%{ transform:scale(1); filter:brightness(1); } }
-  #view-section .brand.brand-landed{ animation:brand-land .28s ease-out; }
   .warp-ship{ position:fixed; left:0; top:0; z-index:200; pointer-events:none; color:var(--red); font-weight:800; letter-spacing:.3px; transform-origin:center center; text-shadow:0 0 10px rgba(255,64,64,.95), 0 0 26px rgba(255,64,64,.55), 0 0 46px rgba(255,64,64,.3); will-change:transform,opacity; }
   .warp-ship .trail{ position:absolute; left:50%; top:50%; height:3px; border-radius:2px; background:linear-gradient(90deg, rgba(255,90,90,.9), rgba(255,90,90,0)); transform-origin:0 50%; filter:blur(.5px); }
   .sec-head{padding:16px var(--pad) 0;}
@@ -2499,22 +2497,22 @@
     brand.classList.add("brand-away");
     function at(x, y, s){ return "translate(" + (x - r.width / 2) + "px," + (y - r.height / 2) + "px) scale(" + s + ")"; }
     var holdX = startX + dx * 0.045, holdY = startY + dy * 0.045;
+    // El vuelo dura lo que el sonido (1,9 s): cruza despacio y la
+    // palabra ATERRIZA justo cuando el sonido termina, ya en su
+    // tamaño normal exacto — sin pasar de tamaño ni rebotes: el
+    // relevo a la marca real es invisible.
     var anim = ship.animate([
       { transform: at(startX, startY, 0.05), opacity: 0.95 },
-      { transform: at(holdX, holdY, 0.07), opacity: 1, offset: 0.22 },
-      { transform: at(endX, endY, 1.1), opacity: 1, offset: 0.86 },
+      { transform: at(holdX, holdY, 0.08), opacity: 1, offset: 0.18 },
+      { transform: at(endX, endY, 1), opacity: 1, offset: 0.92 },
       { transform: at(endX, endY, 1), opacity: 1 }
-    ], { duration: 1450, easing: "cubic-bezier(.6,.02,.3,1)", fill: "forwards" });
+    ], { duration: 1900, easing: "cubic-bezier(.55,.05,.35,1)", fill: "forwards" });
     trail.animate([
-      { opacity: 0 }, { opacity: 0.95, offset: 0.3 }, { opacity: 0.95, offset: 0.8 }, { opacity: 0 }
-    ], { duration: 1450, easing: "ease-out", fill: "forwards" });
+      { opacity: 0 }, { opacity: 0.95, offset: 0.25 }, { opacity: 0.95, offset: 0.88 }, { opacity: 0 }
+    ], { duration: 1900, easing: "ease-out", fill: "forwards" });
     anim.onfinish = function(){
       ship.remove();
       brand.classList.remove("brand-away");
-      brand.classList.remove("brand-landed");
-      void brand.offsetWidth;
-      brand.classList.add("brand-landed");
-      setTimeout(function(){ brand.classList.remove("brand-landed"); }, 320);
     };
   }
 

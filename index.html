@@ -280,11 +280,27 @@
   @media (min-width:900px){
     #view-detail, #view-episodes{position:relative;}
     #view-detail .brandbar, #view-episodes .brandbar{position:absolute; top:0; left:0; right:0; z-index:20; background:linear-gradient(180deg, rgba(0,0,0,.68), rgba(0,0,0,0)); border-bottom:none;}
-    #view-detail .detail-hero::after, #view-episodes .detail-hero::after{content:""; position:absolute; inset:0; background:linear-gradient(to top, rgba(16,16,20,.97) 4%, rgba(16,16,20,.55) 38%, rgba(16,16,20,.05) 68%), linear-gradient(90deg, rgba(16,16,20,.78) 0%, rgba(16,16,20,0) 58%); pointer-events:none;}
+    /* Degradado inferior REFORZADO (pedido de Sergio 4-nov): la imagen se
+       funde por completo con el fondo de la página ANTES de llegar a su
+       borde inferior, para que no se note ninguna línea donde termina —
+       el primer tramo es el color de fondo sólido y la fundición es
+       larga y suave. También vela arriba, bajo la cabecera. */
+    #view-detail .detail-hero::after, #view-episodes .detail-hero::after{content:""; position:absolute; inset:0; z-index:2; background:linear-gradient(to top, var(--bg) 0%, var(--bg) 6%, rgba(16,16,20,.82) 26%, rgba(16,16,20,.42) 48%, rgba(16,16,20,.04) 72%), linear-gradient(90deg, rgba(16,16,20,.78) 0%, rgba(16,16,20,0) 58%), linear-gradient(to bottom, rgba(16,16,20,.38) 0%, rgba(16,16,20,0) 20%); pointer-events:none;}
     /* La imagen va absoluta dentro de la capa: si quedara en el flujo,
        su alto natural (un póster vertical grande) estiraría la rejilla
-       y la ficha saldría de miles de píxeles de alto. */
-    #view-detail .detail-hero img, #view-episodes .detail-hero img{position:absolute; inset:0;}
+       y la ficha saldría de miles de píxeles de alto. El encuadre se
+       ancla un poco arriba del centro (22%) para no cortar cabezas
+       cuando la pantalla es más apaisada que la imagen. */
+    #view-detail .detail-hero img, #view-episodes .detail-hero img{position:absolute; inset:0; z-index:1; object-position:center 22%;}
+    /* Imagen VERTICAL (portada sin fondo panorámico): «cover» la
+       agrandaba y recortaba hasta desproporcionarla. Ahora la portada
+       se muestra COMPLETA (contain) y el resto de la pantalla lo rellena
+       la misma imagen ampliada y desenfocada detrás — sin huecos, sin
+       recortes y sin deformar. La clase .portrait y la variable
+       --hero-img las pone setHeroImg al cargar, según la proporción
+       real de la imagen. */
+    #view-detail .detail-hero.portrait::before, #view-episodes .detail-hero.portrait::before{content:""; position:absolute; inset:-40px; z-index:0; background-image:var(--hero-img); background-size:cover; background-position:center; filter:blur(30px) brightness(.55); pointer-events:none;}
+    #view-detail .detail-hero.portrait img, #view-episodes .detail-hero.portrait img{object-fit:contain; object-position:center center;}
     /* Película: la ficha entera ES la pantalla completa. */
     #view-detail .detail-wrap{position:relative; max-width:none; padding:0; min-height:100vh; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:1fr auto auto auto;}
     #view-detail .detail-hero{grid-column:1; grid-row:1 / -1; margin:0; border-radius:0; aspect-ratio:auto; z-index:0;}
@@ -3509,7 +3525,19 @@
      fundido. Si el panel no trae fondo, se usa el póster de reserva. */
   function setHeroImg(img, src){
     img.classList.remove("ready");
-    img.onload = function(){ img.classList.add("ready"); };
+    // Ajuste según la proporción real (solo cambia la presentación en
+    // escritorio/TV): si la imagen es VERTICAL (portada sin fondo
+    // panorámico), se marca el héroe como .portrait para mostrarla
+    // completa sobre su propia copia desenfocada, en vez de recortarla.
+    var hero = img.parentElement;
+    if(hero){ hero.classList.remove("portrait"); hero.style.removeProperty("--hero-img"); }
+    img.onload = function(){
+      img.classList.add("ready");
+      if(hero && img.naturalWidth && img.naturalHeight && (img.naturalWidth / img.naturalHeight) < 1.15){
+        hero.style.setProperty("--hero-img", 'url("' + img.currentSrc.replace(/"/g, "%22") + '")');
+        hero.classList.add("portrait");
+      }
+    };
     img.onerror = function(){ img.classList.add("ready"); };
     if(src){ img.src = src; } else { img.removeAttribute("src"); }
   }

@@ -191,9 +191,7 @@
   #view-home .brand.brand-away{ visibility:hidden; }
   #enter-anim{ position:fixed; inset:0; z-index:400; background:var(--bg); display:flex; align-items:center; justify-content:center; }
   #enter-anim.hidden{ display:none; }
-  .enter-word{ position:relative; font-weight:800; color:var(--red); font-size:min(21vw,92px); letter-spacing:.3px; line-height:1; white-space:nowrap; }
-  .enter-word span{ display:inline-block; opacity:0; }
-  .enter-pen{ position:absolute; bottom:-16px; left:0; width:11px; height:11px; border-radius:50%; background:#ff5147; box-shadow:0 0 14px 5px rgba(229,57,53,.7); opacity:0; }
+  #enter-canvas{ width:min(88vw,560px); height:auto; display:block; }
   /* Nave WARP de la marca (pedido de Sergio 4-nov): las pantallas de
      sección entran NORMALES; lo que viaja es la palabra Rager del
      header — un puntito de luz en la esquina inferior derecha cruza
@@ -428,7 +426,7 @@
 
 <!-- Entrada animada: RAGER se escribe al centro y viaja a su puesto -->
 <div id="enter-anim" class="hidden">
-  <div class="enter-word" id="enter-word"><span>R</span><span>A</span><span>G</span><span>E</span><span>R</span><i class="enter-pen" id="enter-pen"></i></div>
+  <canvas id="enter-canvas" width="1280" height="400"></canvas>
 </div>
 
 <!-- ================= PANEL DE INICIO ================= -->
@@ -1440,66 +1438,187 @@
     if(S.movies){ warm(); return; }
     loadMoviesData().then(warm).catch(function(){});
   }
+  /* Trazos del «lápiz» por letra, en unidades (x: 0..1 sobre el
+     avance de la letra; y: 0 = alto de la mayúscula, 1 = base).
+     Cada sublista es un trazo continuo; entre trazos el punto de
+     luz se desplaza sin escribir, como un lápiz que se reposiciona. */
+  var PEN_PATHS = {
+    "R": [
+      [[0.10,1],[0.10,0]],
+      [[0.10,0.03],[0.48,0],[0.76,0.08],[0.88,0.26],[0.80,0.44],[0.52,0.52],[0.10,0.52]],
+      [[0.46,0.52],[0.66,0.74],[0.88,1]]
+    ],
+    "A": [
+      [[0.02,1],[0.28,0.48],[0.50,0],[0.74,0.48],[0.98,1]],
+      [[0.24,0.68],[0.76,0.68]]
+    ],
+    "G": [
+      [[0.88,0.16],[0.64,0.03],[0.36,0],[0.14,0.14],[0.04,0.42],[0.09,0.72],[0.28,0.94],[0.56,1],[0.82,0.93],[0.93,0.74],[0.93,0.60],[0.56,0.60]]
+    ],
+    "E": [
+      [[0.14,0],[0.14,1]],
+      [[0.14,0.02],[0.84,0.02]],
+      [[0.14,0.50],[0.74,0.50]],
+      [[0.14,0.98],[0.86,0.98]]
+    ]
+  };
+  function buildWritePlan(cv){
+    var W = 1280, H = 400, FS = 300;
+    cv.width = W; cv.height = H;
+    var tCan = document.createElement("canvas"); tCan.width = W; tCan.height = H;
+    var mCan = document.createElement("canvas"); mCan.width = W; mCan.height = H;
+    var tctx = tCan.getContext("2d");
+    // La MISMA letra de la marca de la cabecera: Nunito Black (900).
+    var FONT = '900 ' + FS + 'px Nunito, "Arial Rounded MT Bold", "Helvetica Rounded", sans-serif';
+    tctx.font = FONT; tctx.fillStyle = "#E53935"; tctx.textBaseline = "alphabetic";
+    var word = "RAGER", track = FS * -0.02, widths = [], total = 0, i;
+    for(i = 0; i < word.length; i++){ var w = tctx.measureText(word[i]).width; widths.push(w); total += w + (i ? track : 0); }
+    var capH = tctx.measureText("R").actualBoundingBoxAscent || FS * 0.72;
+    var baseY = H / 2 + capH / 2;
+    var xs = [], cx = (W - total) / 2;
+    for(i = 0; i < word.length; i++){ xs.push(cx); tctx.fillText(word[i], cx, baseY); cx += widths[i] + track; }
+    var strokes = [];
+    for(i = 0; i < word.length; i++){
+      var paths = PEN_PATHS[word[i]] || [];
+      for(var s = 0; s < paths.length; s++){
+        strokes.push(paths[s].map(function(p){ return [xs[i] + p[0] * widths[i], baseY - (1 - p[1]) * capH]; }));
+      }
+    }
+    return { tCan: tCan, mCan: mCan, strokes: strokes, penR: FS * 0.10, W: W, H: H };
+  }
+  function animateWriting(cv, plan, totalMs){
+    return new Promise(function(resolve){
+      var ctx = cv.getContext("2d");
+      var mctx = plan.mCan.getContext("2d");
+      mctx.fillStyle = "#fff";
+      // Línea de tiempo: desplazamientos (sin escribir) y trazos.
+      var segs = [], pos = null, drawTotal = 0;
+      plan.strokes.forEach(function(pts){
+        segs.push({ lift: true, from: pos, to: pts[0] });
+        for(var i = 1; i < pts.length; i++){
+          var dx = pts[i][0] - pts[i-1][0], dy = pts[i][1] - pts[i-1][1];
+          var len = Math.sqrt(dx*dx + dy*dy);
+          segs.push({ lift: false, from: pts[i-1], to: pts[i], len: len });
+          drawTotal += len;
+        }
+        pos = pts[pts.length - 1];
+      });
+      var LIFT_MS = 110;
+      var lifts = segs.filter(function(s){ return s.lift && s.from; }).length;
+      var drawBudget = Math.max(900, totalMs - lifts * LIFT_MS);
+      segs.forEach(function(s){
+        s.dur = s.lift ? (s.from ? LIFT_MS : 0) : (drawTotal ? drawBudget * s.len / drawTotal : 0);
+      });
+      var total = segs.reduce(function(a, s){ return a + s.dur; }, 0);
+      var start = null, lastStamp = null;
+      function frame(ts){
+        if(!enterAnimRunning){ resolve(); return; }
+        if(start === null) start = ts;
+        var t = ts - start, done = t >= total;
+        var acc = 0, cur = null, drawing = false, i, s;
+        for(i = 0; i < segs.length; i++){
+          s = segs[i];
+          if(t <= acc + s.dur || i === segs.length - 1){
+            var f = s.dur ? Math.min(1, (t - acc) / s.dur) : 1;
+            if(s.from && s.to){ cur = [s.from[0] + (s.to[0] - s.from[0]) * f, s.from[1] + (s.to[1] - s.from[1]) * f]; drawing = !s.lift; }
+            break;
+          }
+          acc += s.dur;
+        }
+        if(done && segs.length){ cur = segs[segs.length - 1].to; drawing = false; }
+        if(cur && drawing){
+          if(lastStamp){
+            var ddx = cur[0] - lastStamp[0], ddy = cur[1] - lastStamp[1];
+            var dist = Math.sqrt(ddx*ddx + ddy*ddy), steps = Math.max(1, Math.ceil(dist / (plan.penR * 0.5)));
+            for(var st = 1; st <= steps; st++){
+              mctx.beginPath();
+              mctx.arc(lastStamp[0] + ddx * st / steps, lastStamp[1] + ddy * st / steps, plan.penR, 0, 6.2832);
+              mctx.fill();
+            }
+          } else {
+            mctx.beginPath(); mctx.arc(cur[0], cur[1], plan.penR, 0, 6.2832); mctx.fill();
+          }
+          lastStamp = cur;
+        } else if(cur){ lastStamp = null; }
+        // Componer: la palabra recortada por lo ya escrito + el punto.
+        ctx.clearRect(0, 0, plan.W, plan.H);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.drawImage(plan.tCan, 0, 0);
+        ctx.globalCompositeOperation = "destination-in";
+        ctx.drawImage(plan.mCan, 0, 0);
+        ctx.globalCompositeOperation = "source-over";
+        if(cur && !done){
+          ctx.save();
+          ctx.shadowColor = "rgba(255,81,71,.95)"; ctx.shadowBlur = 34;
+          ctx.fillStyle = drawing ? "#ff6f66" : "rgba(255,111,102,.55)";
+          ctx.beginPath(); ctx.arc(cur[0], cur[1], plan.penR * 0.42, 0, 6.2832); ctx.fill();
+          ctx.restore();
+          ctx.fillStyle = "#fff";
+          ctx.beginPath(); ctx.arc(cur[0], cur[1], plan.penR * 0.16, 0, 6.2832); ctx.fill();
+        }
+        if(done){ resolve(); return; }
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    });
+  }
   function enterFromProfile(){
     if(enterAnimRunning){ goHome(); return; }
     // En el mismo momento del toque empiezan a cargar por detrás
     // SOLO las imágenes del escaparate del panel.
     startBackgroundLoads();
-    var overlay = $("enter-anim"), word = $("enter-word"), pen = $("enter-pen");
-    var letters = word.querySelectorAll("span");
-    word.getAnimations().forEach(function(a){ a.cancel(); });
+    var overlay = $("enter-anim"), cv = $("enter-canvas");
+    cv.getAnimations().forEach(function(a){ a.cancel(); });
     overlay.getAnimations().forEach(function(a){ a.cancel(); });
     overlay.style.backgroundColor = "";
-    letters.forEach(function(l){ l.style.opacity = "0"; });
     overlay.classList.remove("hidden");
     enterAnimRunning = true;
-    // Vigía: pase lo que pase, a los 4 s el panel queda libre.
+    // Vigía: pase lo que pase, a los 8 s el panel queda libre.
     setTimeout(function(){
       if(!enterAnimRunning) return;
       if($("view-home").classList.contains("hidden")) goHome();
       finishEnter(overlay, document.querySelector("#view-home .brand"));
-    }, 4000);
-    // La escritura: letra a letra, con la punta de luz que las traza.
-    var wordW = word.offsetWidth || 260;
-    var writeAnims = [];
-    letters.forEach(function(l, i){
-      writeAnims.push(l.animate([
-        { opacity: 0, transform: "translateY(16px) rotate(-5deg) scale(.75)", filter: "blur(7px)" },
-        { opacity: 1, transform: "translateY(0px) rotate(0deg) scale(1)", filter: "blur(0px)" }
-      ], { duration: 250, delay: 120 + i * 115, easing: "cubic-bezier(.2,.7,.3,1.15)", fill: "forwards" }));
-    });
-    pen.animate([
-      { opacity: 0, transform: "translateX(0px)" },
-      { opacity: 1, transform: "translateX(" + Math.round(wordW * 0.22) + "px)", offset: 0.22 },
-      { opacity: 1, transform: "translateX(" + wordW + "px)", offset: 0.92 },
-      { opacity: 0, transform: "translateX(" + wordW + "px)" }
-    ], { duration: 120 + letters.length * 115 + 160, easing: "linear", fill: "forwards" });
-    Promise.all(writeAnims.map(function(a){ return a.finished; })).catch(function(){}).then(function(){
-      return new Promise(function(r){ setTimeout(r, 230); });
-    }).then(function(){
-      if(enterAnimRunning) flyEnterWord(overlay, word);
+    }, 8000);
+    // Toda la animación dura ~5 s (pedido de Sergio): escritura
+    // trazada 3,5 s + pausa 0,35 s + viaje a su puesto 1 s.
+    var ready = (document.fonts && document.fonts.load) ? document.fonts.load('900 100px Nunito') : Promise.resolve();
+    Promise.race([ready, new Promise(function(r){ setTimeout(r, 600); })]).then(function(){
+      if(!enterAnimRunning) return;
+      try {
+        var plan = buildWritePlan(cv);
+        animateWriting(cv, plan, 3500).then(function(){
+          return new Promise(function(r){ setTimeout(r, 350); });
+        }).then(function(){
+          if(enterAnimRunning) flyEnterWord(overlay, cv);
+        }).catch(function(){
+          if(enterAnimRunning){ goHome(); finishEnter(overlay, document.querySelector("#view-home .brand")); }
+        });
+      } catch(e){
+        goHome();
+        finishEnter(overlay, document.querySelector("#view-home .brand"));
+      }
     });
   }
-  function flyEnterWord(overlay, word){
+  function flyEnterWord(overlay, cv){
     // El panel aparece detrás (y sigue cargando) y la palabra
     // viaja a su puesto: la marca de la cabecera del panel.
     goHome();
     var brand = document.querySelector("#view-home .brand");
     if(!brand){ finishEnter(overlay, null); return; }
     brand.classList.add("brand-away");
-    var wr = word.getBoundingClientRect();
+    var wr = cv.getBoundingClientRect();
     var br = brand.getBoundingClientRect();
     var dx = (br.left + br.width / 2) - (wr.left + wr.width / 2);
     var dy = (br.top + br.height / 2) - (wr.top + wr.height / 2);
     var sc = br.width / wr.width;
-    var anim = word.animate([
+    var anim = cv.animate([
       { transform: "translate(0px, 0px) scale(1)" },
       { transform: "translate(" + dx + "px, " + dy + "px) scale(" + sc + ")" }
-    ], { duration: 640, easing: "cubic-bezier(.55,.06,.25,1)", fill: "forwards" });
+    ], { duration: 1000, easing: "cubic-bezier(.55,.06,.25,1)", fill: "forwards" });
     overlay.animate([
       { backgroundColor: "rgba(16,16,20,1)" },
       { backgroundColor: "rgba(16,16,20,0)" }
-    ], { duration: 640, easing: "ease-out", fill: "forwards" });
+    ], { duration: 1000, easing: "ease-out", fill: "forwards" });
     anim.finished.then(function(){ finishEnter(overlay, brand); }).catch(function(){ finishEnter(overlay, brand); });
   }
   function finishEnter(overlay, brand){

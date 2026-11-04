@@ -96,7 +96,7 @@
   .bar-right{margin-left:auto; display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
   /* Cabecera de SECCIÓN (TV en vivo / Películas / Series): tres zonas con
      la marca «RAGER» centrada de verdad respecto a todo el ancho — a la
-     izquierda «← Volver» (+ sello demo), al centro la marca y a la derecha
+     izquierda la flecha «←» (+ sello demo), al centro la marca y a la derecha
      el chip del perfil. Solo esta cabecera lleva .secbar; el panel y las
      cabeceras de parrilla/episodios siguen como están. */
   .brandbar.secbar{display:grid; grid-template-columns:1fr auto 1fr; align-items:center;}
@@ -107,7 +107,7 @@
     .secbar .brand{font-size:23px;}
     .secbar .badge-demo{font-size:10px; padding:2px 6px;}
   }
-  .chip{display:flex; align-items:center; gap:8px; background:transparent; border:1px solid transparent; border-radius:999px; padding:4px 10px 4px 4px;}
+  .chip{display:flex; align-items:center; gap:8px; background:transparent; border:1px solid transparent; border-radius:999px; padding:4px;}
   .chip:hover{border-color:var(--line);}
   .chip .ava{width:var(--avatar); height:var(--avatar); border-radius:50%; color:#fff; font-weight:800; display:flex; align-items:center; justify-content:center; font-size:15px;}
   .chip .cname{font-size:15px; max-width:var(--cname-w); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
@@ -371,7 +371,7 @@
 <section id="view-section" class="hidden">
   <div class="brandbar secbar">
     <div class="bar-left">
-      <button id="sec-back" class="btn-ghost" type="button">← Volver</button>
+      <button id="sec-back" class="btn-ghost" type="button" aria-label="Volver">←</button>
       <span id="sec-demo-badge" class="badge-demo hidden">MODO DEMO</span>
     </div>
     <div class="brand">Rager</div>
@@ -394,7 +394,7 @@
   </div>
   <div class="grid-wrap">
     <div class="grid-head">
-      <button id="grid-back" class="btn-ghost" type="button">← Volver</button>
+      <button id="grid-back" class="btn-ghost" type="button" aria-label="Volver">←</button>
       <div class="gtitle" id="grid-title"></div>
     </div>
     <div class="search-row" style="padding:0 0 6px;">
@@ -416,7 +416,7 @@
   </div>
   <div class="ep-wrap">
     <div class="grid-head">
-      <button id="ep-back" class="btn-ghost" type="button">← Volver</button>
+      <button id="ep-back" class="btn-ghost" type="button" aria-label="Volver">←</button>
       <div class="gtitle" id="ep-title"></div>
     </div>
     <div id="ep-hero" class="detail-hero hidden"><img id="ep-hero-img" alt=""></div>
@@ -438,7 +438,7 @@
   </div>
   <div class="detail-wrap">
     <div class="grid-head">
-      <button id="detail-back" class="btn-ghost" type="button">← Volver</button>
+      <button id="detail-back" class="btn-ghost" type="button" aria-label="Volver">←</button>
       <div class="gtitle" id="detail-title"></div>
     </div>
     <div class="detail-hero"><img id="detail-img" alt=""></div>
@@ -451,7 +451,7 @@
 <!-- ================= REPRODUCTOR ================= -->
 <section id="view-player" class="hidden">
   <div class="player-top">
-    <button id="btn-pback" class="btn-ghost" type="button">← Volver</button>
+    <button id="btn-pback" class="btn-ghost" type="button" aria-label="Volver">←</button>
     <div style="min-width:0;">
       <div id="player-name" class="player-name"></div>
       <div id="player-sub" class="player-sub"></div>
@@ -509,6 +509,7 @@
     <div class="account-rows">
       <div class="account-row"><span>Nombre de usuario</span><b id="account-user"></b></div>
       <div class="account-row"><span>Vencimiento de la cuenta</span><b id="account-exp"></b></div>
+      <div class="account-row"><span>Conexiones disponibles</span><b id="account-conn"></b></div>
     </div>
     <a id="account-renew" class="btn-search account-renew" href="https://wa.me/15704698339" target="_blank" rel="noopener">Renovar suscripción</a>
   </div>
@@ -734,6 +735,18 @@
     pair[1].forEach(function(a){ NORMALIZED_ALIASES.push({ country: pair[0], alias: countryNormalize(a).trim() }); });
   });
   NORMALIZED_ALIASES.sort(function(a, b){ return b.alias.length - a.alias.length; });
+  /* Los nombres de categoria del proveedor traen emojis decorativos
+     («⭐ DEPORTES», «🎬 PELICULAS»): se quitan al cargar (pedido de
+     Sergio, 3-nov) y se recortan los separadores que queden sueltos. */
+  function cleanCatName(n){
+    var out = String(n == null ? "" : n)
+      .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{2300}-\u{23FF}\u{25A0}-\u{25FF}\uFE0F\u200D]/gu, " ")
+      .replace(/\s+/g, " ")
+      .replace(/^[\s|\-•·—–\/\\]+/, "")
+      .replace(/[\s|\-•·—–\/\\]+$/, "")
+      .trim();
+    return out || String(n || "").trim();
+  }
   function countryOfCategory(categoryName){
     if(!categoryName) return null;
     var hay = countryNormalize(categoryName);
@@ -970,7 +983,7 @@
       return Promise.resolve(S.live);
     }
     return Promise.all([api("get_live_categories"), api("get_live_streams")]).then(function(res){
-      var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: c.category_name || "Sin categoría" }; });
+      var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: cleanCatName(c.category_name || "Sin categoría") }; });
       var channels = (Array.isArray(res[1]) ? res[1] : []).map(function(s){
         return { streamId: Number(s.stream_id)||0, name: s.name || ("Canal " + s.stream_id), icon: s.stream_icon || "", categoryId: String(s.category_id), number: 0 };
       }).filter(function(ch){ return ch.streamId !== 0; });
@@ -989,7 +1002,7 @@
     if(S.movies) return Promise.resolve(S.movies);
     if(S.demo){ S.movies = buildDemoMovies(); return Promise.resolve(S.movies); }
     return Promise.all([api("get_vod_categories"), api("get_vod_streams")]).then(function(res){
-      var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: c.category_name || "Sin categoría" }; });
+      var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: cleanCatName(c.category_name || "Sin categoría") }; });
       var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
         var year = o.year || (o.releasedate ? String(o.releasedate).slice(0,4) : "");
         return { streamId: Number(o.stream_id)||0, name: o.name || ("Película " + o.stream_id), icon: o.stream_icon || "",
@@ -1005,7 +1018,7 @@
     if(S.series) return Promise.resolve(S.series);
     if(S.demo){ S.series = buildDemoSeries(); return Promise.resolve(S.series); }
     return Promise.all([api("get_series_categories"), api("get_series")]).then(function(res){
-      var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: c.category_name || "Sin categoría" }; });
+      var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: cleanCatName(c.category_name || "Sin categoría") }; });
       var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
         return { seriesId: Number(o.series_id)||0, name: o.name || ("Serie " + o.series_id), cover: o.cover || "",
                  categoryId: String(o.category_id), year: parseInt(String(o.releaseDate || o.year || "").slice(0, 4), 10) || 0, rating: parseRating(o), added: parseEpochLoose(o.last_modified) };
@@ -1067,7 +1080,7 @@
   }
   function chipHTML(p){
     if(!p) return "";
-    return '<span class="ava" style="background:' + profileColor(p) + '">' + esc(profileInitial(p)) + '</span><span class="cname">' + esc(p.name) + '</span><span class="car">▾</span>';
+    return '<span class="ava" style="background:' + profileColor(p) + '">' + esc(profileInitial(p)) + '</span>';
   }
   function renderChips(){
     var html = chipHTML(S.profile);
@@ -1165,6 +1178,7 @@
     } else exp = "Sin vencimiento";
     $("account-user").textContent = user;
     $("account-exp").textContent = exp;
+    $("account-conn").textContent = S.demo ? "—" : ((S.userInfo && S.userInfo.maxConnections) || "—");
     $("modal-account").classList.remove("hidden");
   }
   function closeAccountModal(){ $("modal-account").classList.add("hidden"); }
@@ -1500,13 +1514,13 @@
     return block;
   }
 
-  /* Barra «← Volver» que encabeza los resultados de una búsqueda:
+  /* Barra «Inicio» que encabeza los resultados de una búsqueda:
      devuelve al inicio de la sección (las filas, sin texto). */
   function searchBackBar(onBack){
     var bar = document.createElement("div");
     bar.className = "search-backbar";
     var b = document.createElement("button");
-    b.type = "button"; b.className = "btn-ghost"; b.textContent = "← Volver";
+    b.type = "button"; b.className = "btn-ghost"; b.textContent = "Inicio";
     b.addEventListener("click", onBack);
     bar.appendChild(b);
     return bar;
@@ -1721,15 +1735,9 @@
     body.innerHTML = "";
     var head = document.createElement("div");
     head.className = "sec-head";
-    var acct = "";
-    if(!S.demo && S.userInfo){
-      acct = esc(S.user) + " · " + esc(S.userInfo.status || "") +
-        (S.userInfo.expText ? " · Vence: " + esc(S.userInfo.expText) : "") +
-        (S.userInfo.maxConnections ? " · Conexiones: " + esc(S.userInfo.maxConnections) : "");
-    } else if(S.demo){
-      acct = "Modo demo: catálogo de ejemplo, sin credenciales.";
-    }
-    head.innerHTML = '<div class="sec-title">Canales en vivo</div>' + (acct ? '<div class="account-line">' + acct + "</div>" : "");
+    // Sin linea de cuenta bajo el titulo (pedido de Sergio, 3-nov):
+    // usuario, vencimiento y conexiones viven en «Mi cuenta».
+    head.innerHTML = '<div class="sec-title">Canales en vivo</div>';
     body.appendChild(head);
 
     if(!S.demo && S.userInfo && S.userInfo.expDays != null && S.userInfo.expDays <= EXPIRY_WARNING_DAYS){
@@ -1759,7 +1767,7 @@
 
     $("btn-countries").addEventListener("click", renderCountries);
     // La búsqueda SOLO corre al pulsar «Buscar» (o Enter): escribir no
-    // filtra nada. Tras buscar, «← Volver» devuelve al inicio de la
+    // filtra nada. Tras buscar, «Inicio» devuelve al inicio de la
     // sección (las filas, con el buscador vacío). Pedido de Sergio.
     // Además del nombre, busca en la PROGRAMACIÓN que están dando los
     // canales ahora mismo (guía enlazada por nombre): esos resultados
@@ -1866,7 +1874,7 @@
     resetLazyRows();
     var head = document.createElement("div");
     head.className = "sec-head";
-    head.innerHTML = '<button class="btn-ghost" id="btn-countries-back" type="button">← Volver</button>' +
+    head.innerHTML = '<button class="btn-ghost" id="btn-countries-back" type="button" aria-label="Volver">←</button>' +
                      '<div class="sec-title" style="margin-top:12px;">Canales por países</div>';
     body.appendChild(head);
     var groups = groupByCountry();
@@ -1990,7 +1998,7 @@
     buildRows();
 
     // Igual que en canales: solo se busca al pulsar «Buscar» (o Enter)
-    // y «← Volver» devuelve al inicio de la sección.
+    // y «Inicio» devuelve al inicio de la sección.
     function backVodSearch(){
       $("vod-search").value = "";
       searchHost.classList.add("hidden");

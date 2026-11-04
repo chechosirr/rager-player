@@ -139,6 +139,12 @@
   .profiles-title{font-size:clamp(24px,4vw,36px); font-weight:700; margin-bottom:34px; text-align:center;}
   .profiles-grid{display:flex; flex-wrap:wrap; gap:26px; justify-content:center; max-width:900px;}
   .profile-tile{display:flex; flex-direction:column; align-items:center; gap:10px; background:none; border:none; width:120px;}
+  #welcome{position:fixed; inset:0; z-index:80; background:var(--bg); display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity .35s ease;}
+  #welcome.hidden{display:none;}
+  #welcome.show{opacity:1;}
+  .welcome-box{text-align:center; padding:0 20px;}
+  .welcome-hi{color:#fff; font-size:clamp(22px,4.5vw,30px);}
+  .welcome-name{font-family:"Nunito Black","Nunito",sans-serif; font-weight:900; color:var(--red); font-size:clamp(38px,8vw,54px); margin-top:6px; overflow-wrap:break-word;}
   .profile-tile .ava{width:96px; height:96px; border-radius:50%; color:#fff; font-weight:800; font-size:40px; display:flex; align-items:center; justify-content:center; border:3px solid transparent; transition:transform .15s, border-color .15s;}
   .profile-tile:hover .ava, .profile-tile:focus-visible .ava{transform:scale(1.05); border-color:#fff;}
   .profiles-wrap.editing .profile-tile .ava{border-color:var(--amber);}
@@ -389,6 +395,15 @@
     <button id="btn-profiles-back" class="btn-ghost hidden" type="button">Cerrar sesión</button>
   </div>
 </section>
+
+<!-- Bienvenida tras elegir usuario: «Bienvenido, <nombre>» a
+     pantalla completa un instante y entra sola al panel. -->
+<div id="welcome" class="hidden">
+  <div class="welcome-box">
+    <div class="welcome-hi">Bienvenido,</div>
+    <div class="welcome-name" id="welcome-name"></div>
+  </div>
+</div>
 
 <!-- ================= PANEL DE INICIO ================= -->
 <section id="view-home" class="hidden">
@@ -1455,6 +1470,19 @@
   /* ================================================================
      Perfiles: «¿Quién está viendo?»
      ================================================================ */
+  /* Bienvenida (pedido de Sergio 4-nov): al elegir usuario se
+     muestra «Bienvenido, <nombre>» a pantalla completa ~1,7 s y
+     luego entra sola al panel. */
+  function showWelcomeThenHome(p){
+    var w = $("welcome");
+    $("welcome-name").textContent = p.name;
+    w.classList.remove("hidden");
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ w.classList.add("show"); }); });
+    setTimeout(function(){
+      w.classList.remove("show");
+      setTimeout(function(){ w.classList.add("hidden"); goHome(); }, 360);
+    }, 1700);
+  }
   var pmEditing = null;   // perfil en edición (null = nuevo)
   var pmColor = 0;
   function renderProfiles(){
@@ -1474,7 +1502,7 @@
         else {
           S.profile = p;
           setActiveProfileId(p.id);
-          goHome();
+          showWelcomeThenHome(p);
         }
       });
       grid.appendChild(b);

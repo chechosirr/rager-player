@@ -295,6 +295,26 @@
   #vb-play svg{width:26px; height:26px; display:block;}
   #vb-mute,#vb-fs,#vb-exitfs{flex:none; width:42px; height:42px; border:0; background:transparent; color:#fff; padding:0; display:flex; align-items:center; justify-content:center; cursor:pointer;}
   #vb-mute svg,#vb-fs svg,#vb-exitfs svg{width:24px; height:24px; display:block;}
+  /* Botones de pista de audio y subtítulos (pedido de Sergio 4-nov):
+     arriba a la derecha, justo debajo del título, solo en películas y
+     series. Aparecen y desaparecen con los demás controles (la clase
+     .show la pone y la quita el mismo ciclo que muestra la barra). */
+  #track-box{position:absolute; top:12px; right:12px; z-index:7; display:flex; gap:8px; opacity:0; pointer-events:none; transition:opacity .3s ease;}
+  #track-box.show{opacity:1; pointer-events:auto;}
+  #track-box>button{width:44px; height:44px; border-radius:50%; border:0; background:rgba(0,0,0,.55); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; flex:none;}
+  #track-box>button svg{width:24px; height:24px; display:block;}
+  #track-box>button.off{opacity:.45;}
+  #track-box>button.on{box-shadow:inset 0 0 0 2px var(--red);}
+  #track-menu{position:absolute; top:54px; right:0; min-width:216px; max-width:80vw; max-height:60vh; overflow:auto; background:rgba(12,12,16,.96); border:1px solid rgba(255,255,255,.16); border-radius:12px; padding:6px; box-shadow:0 10px 30px rgba(0,0,0,.5);}
+  #track-menu .tm-title{font-size:12px; color:var(--mut); padding:6px 10px 4px; letter-spacing:.05em; text-transform:uppercase;}
+  #track-menu .tm-note{font-size:14px; color:#fff; padding:8px 10px; max-width:250px; line-height:1.4;}
+  #track-menu button.tm-item{display:flex; width:100%; align-items:center; gap:8px; background:transparent; border:0; color:#fff; font-size:15px; text-align:left; padding:10px; border-radius:8px; cursor:pointer;}
+  #track-menu button.tm-item .ck{width:18px; flex:none; color:var(--red); font-weight:800;}
+  /* Subtítulos pintados por la propia página sobre el video (así
+     funcionan igual en Safari, Chrome y con hls.js, sin depender de
+     las pistas de texto del navegador). */
+  #vod-cap{position:absolute; left:0; right:0; bottom:11%; z-index:6; text-align:center; pointer-events:none; padding:0 7%; display:none;}
+  #vod-cap span{background:rgba(0,0,0,.62); color:#fff; font-size:clamp(15px,2.6vw,21px); line-height:1.35; padding:2px 10px; border-radius:6px; white-space:pre-line; box-decoration-break:clone; -webkit-box-decoration-break:clone;}
   .vb-live{display:none; flex:1; min-width:0; text-align:center; color:#fff; font-weight:800; letter-spacing:.08em; font-size:13px;}
   .vb-live .dot{color:var(--red);}
   .vodbar.live-mode .vb-live{display:block;}
@@ -506,6 +526,12 @@
       <button id="vb-fs" type="button" aria-label="Ver en horizontal"></button>
       <button id="vb-exitfs" type="button" aria-label="Salir del modo horizontal"></button>
     </div>
+    <div id="track-box" class="hidden">
+      <button id="btn-audio" type="button" aria-label="Pista de audio"></button>
+      <button id="btn-subs" type="button" aria-label="Subtítulos"></button>
+      <div id="track-menu" class="hidden"></div>
+    </div>
+    <div id="vod-cap"><span id="vod-cap-text"></span></div>
     <div id="dial"></div>
     <div id="vod-intro" class="hidden">
       <div id="intro-brand">Rager</div>
@@ -1004,7 +1030,10 @@
   function vodUrl(kind, id, ext){
     var e = (ext || "mp4").toLowerCase();
     var base = kind === "movie" ? movieUrl(id, ext) : seriesUrl(id, ext);
-    if(!REMUX_EXTS[e]) return base;
+    // Con una pista de audio elegida a mano, TODO pasa por la
+    // conversión del puente (también un MP4): es la única forma
+    // segura de cambiar la pista en cualquier navegador.
+    if(!REMUX_EXTS[e] && !(P.audioSel != null && P.audioSel >= 0)) return base;
     // Formato que el navegador no reproduce tal cual: el puente lo
     // convierte a HLS (.m3u8 por segmentos) — Safari lo reproduce de
     // forma nativa, igual que los canales en vivo. (La entrega anterior
@@ -1013,6 +1042,7 @@
     // (ss=) y el reproductor ya no busca de nuevo.
     var u = SERVER + "/remux/" + kind + "/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) +
             "/" + id + ".m3u8?ext=" + e;
+    if(P.audioSel != null && P.audioSel >= 0) u += "&atrack=" + P.audioSel;
     if(P.resumePos && P.resumePos > 5){
       P.bakedSeek = true;
       P.seekBase = Math.floor(P.resumePos);
@@ -2260,6 +2290,12 @@
     P.contentDur = 0; P.resumePos = 0; P.metaReady = false; P.isRemux = false;
     $("vb-cur").textContent = "0:00"; $("vb-dur").textContent = "—";
     var rr = $("vb-range"); rr.value = 0; paintRange(rr);
+    // Pistas de audio/subtítulos: cada título empieza de cero.
+    P.tracks = null; P.audioSel = -1; P.subSel = -1;
+    P.cues = null; P.capIdx = -1; P.metaKey = null; P.cueKey = null;
+    closeTrackMenu();
+    $("vod-cap").style.display = "none"; $("vod-cap-text").textContent = "";
+    $("track-box").classList.add("hidden"); $("track-box").classList.remove("show");
     hideVodIntro();
     hideVodBar();
     v.setAttribute("controls", "");
@@ -2339,6 +2375,7 @@
     if(P.contentDur){ r.max = P.contentDur; r.value = Math.min(Math.floor(pos), P.contentDur); r.disabled = false; }
     else { r.max = 1000; r.value = 0; r.disabled = true; }
     paintRange(r);
+    updateCaption();
   }
   function seekVodTo(sec){
     sec = Math.max(0, Math.floor(sec));
@@ -2367,6 +2404,187 @@
       if(d > 0 && Math.floor(d) !== P.contentDur){ P.contentDur = Math.floor(d); updateVodBar(); }
     }).catch(function(){});
   }
+  /* ===== Pistas de audio y subtítulos (pedido de Sergio 4-nov) =====
+     Botones arriba a la derecha, debajo del título, solo en películas
+     y series, que aparecen y desaparecen con los demás controles. El
+     puente conoce las pistas de cada archivo (/meta). Cambiar de
+     audio en un archivo convertido reinicia la conversión con la
+     pista elegida (atrack=) en el mismo punto; en un archivo directo,
+     si el navegador deja cambiar la pista por dentro (Safari), se
+     cambia sin reiniciar. Los subtítulos los pinta la página sobre el
+     video con el WebVTT que extrae el puente (/subs). */
+  var LANG_NAMES = { spa:"Español", eng:"Inglés", por:"Portugués", fra:"Francés", fre:"Francés", ita:"Italiano", deu:"Alemán", ger:"Alemán", jpn:"Japonés", kor:"Coreano", zho:"Chino", chi:"Chino", rus:"Ruso", ara:"Árabe", hin:"Hindi", nld:"Holandés", dut:"Holandés", cat:"Catalán" };
+  function langName(code){ return LANG_NAMES[(code || "").toLowerCase()] || ""; }
+  function trackLabels(list, noun){
+    var totals = {}, seen = {};
+    list.forEach(function(t){ var k = (t.lang || "?") + "|" + (t.title || ""); totals[k] = (totals[k] || 0) + 1; });
+    return list.map(function(t){
+      var k = (t.lang || "?") + "|" + (t.title || "");
+      var name = langName(t.lang), base, plain = false;
+      if(t.title) base = (name || noun) + " — " + t.title;
+      else if(name) base = name;
+      else { base = noun + " " + (t.n + 1); plain = true; }
+      if(totals[k] > 1 && !plain){ seen[k] = (seen[k] || 0) + 1; base += " " + seen[k]; }
+      return base;
+    });
+  }
+  function updateTrackButtons(){
+    var vod = (P.kind === "movie" || P.kind === "episode");
+    $("track-box").classList.toggle("hidden", !vod);
+    if(!vod) return;
+    $("btn-audio").classList.toggle("off", !(P.tracks && P.tracks.audio.length > 1));
+    $("btn-subs").classList.toggle("off", !(P.tracks && P.tracks.subs.length > 0));
+    $("btn-subs").classList.toggle("on", P.subSel >= 0);
+  }
+  function fetchTitleMeta(kind, id, ext){
+    if(S.demo) return;
+    var seq = P.playSeq;
+    var url = SERVER + "/meta/" + kind + "/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) +
+              "/" + id + "?ext=" + (ext || "mp4").toLowerCase();
+    fetch(url).then(function(r){ return r.json(); }).then(function(m){
+      if(P.playSeq !== seq || !m) return;
+      P.tracks = { audio: m.audio || [], subs: (m.subs || []).filter(function(s){ return s.text; }), defAudio: m.defAudio || 0 };
+      if(!P.contentDur && m.dur > 0){ P.contentDur = Math.floor(m.dur); updateVodBar(); }
+      updateTrackButtons();
+    }).catch(function(){});
+  }
+  var trackMenuFor = null;
+  function closeTrackMenu(){
+    var m = $("track-menu");
+    if(m) m.classList.add("hidden");
+    trackMenuFor = null;
+  }
+  function menuRow(label, checked, fn){
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "tm-item";
+    var ck = document.createElement("span"); ck.className = "ck"; ck.textContent = checked ? "✓" : "";
+    var tx = document.createElement("span"); tx.textContent = label;
+    b.appendChild(ck); b.appendChild(tx);
+    b.addEventListener("click", fn);
+    return b;
+  }
+  function menuNote(text){
+    var m = $("track-menu");
+    m.innerHTML = "";
+    var d = document.createElement("div"); d.className = "tm-note"; d.textContent = text;
+    m.appendChild(d); m.classList.remove("hidden"); trackMenuFor = "note";
+    setTimeout(function(){ if(trackMenuFor === "note") closeTrackMenu(); }, 2400);
+    showVodBar();
+  }
+  function openTrackMenu(which){
+    if(trackMenuFor === which){ closeTrackMenu(); showVodBar(); return; }
+    if(S.demo){ menuNote("En la demo no hay pistas para cambiar."); return; }
+    if(!P.tracks){ menuNote("Todavía no cargó la información de este título."); return; }
+    var m = $("track-menu");
+    m.innerHTML = "";
+    var title = document.createElement("div"); title.className = "tm-title";
+    if(which === "audio"){
+      if(P.tracks.audio.length <= 1){ menuNote("Este título solo tiene una pista de audio."); return; }
+      title.textContent = "Pista de audio"; m.appendChild(title);
+      m.appendChild(menuRow("Automática", P.audioSel === -1, function(){ selectAudio(-1); }));
+      var labels = trackLabels(P.tracks.audio, "Pista");
+      P.tracks.audio.forEach(function(t, i){
+        m.appendChild(menuRow(labels[i], P.audioSel === t.n, function(){ selectAudio(t.n); }));
+      });
+    } else {
+      if(!P.tracks.subs.length){ menuNote("Este título no trae subtítulos."); return; }
+      title.textContent = "Subtítulos"; m.appendChild(title);
+      m.appendChild(menuRow("Sin subtítulos", P.subSel === -1, function(){ selectSub(-1); }));
+      var labels2 = trackLabels(P.tracks.subs, "Subtítulo");
+      P.tracks.subs.forEach(function(t, i){
+        m.appendChild(menuRow(labels2[i], P.subSel === t.n, function(){ selectSub(t.n); }));
+      });
+    }
+    m.classList.remove("hidden"); trackMenuFor = which;
+    showVodBar();
+  }
+  function nativeAudioSwitch(n){
+    var v = videoEl();
+    try{
+      if(!v.audioTracks || v.audioTracks.length < 2) return false;
+      if(!P.tracks || v.audioTracks.length !== P.tracks.audio.length) return false;
+      var target = (n >= 0 ? n : (P.tracks.defAudio || 0));
+      for(var i = 0; i < v.audioTracks.length; i++) v.audioTracks[i].enabled = (i === target);
+      return true;
+    }catch(e){ return false; }
+  }
+  function selectAudio(n){
+    closeTrackMenu();
+    if(n === P.audioSel){ showVodBar(); return; }
+    if(!P.isRemux && nativeAudioSwitch(n)){ P.audioSel = n; updateTrackButtons(); showVodBar(); return; }
+    var pos = vodPosition();
+    P.audioSel = n;
+    P.resumePos = Math.floor(pos);
+    P.bakedSeek = false; P.seekBase = 0; P.triedAlt = false;
+    var url = null;
+    if(P.kind === "movie" && P.movie) url = vodUrl("movie", P.movie.streamId, P.movie.extension);
+    else if(P.kind === "episode" && P.episode) url = vodUrl("series", P.episode.id, P.episode.extension);
+    if(url) attachSource(url, null);
+    updateTrackButtons();
+    showVodBar();
+  }
+  function selectSub(n){
+    closeTrackMenu();
+    P.subSel = n;
+    P.cues = null; P.capIdx = -1;
+    paintCaption("");
+    updateTrackButtons();
+    if(n >= 0) loadCues();
+    showVodBar();
+  }
+  function loadCues(){
+    if(P.subSel < 0 || S.demo) return;
+    var kind = P.kind === "movie" ? "movie" : "series";
+    var id = P.kind === "movie" ? P.movie.streamId : P.episode.id;
+    var ext = ((P.kind === "movie" ? P.movie.extension : P.episode.extension) || "mp4").toLowerCase();
+    var key = kind + ":" + id + ":" + P.subSel;
+    P.cueKey = key;
+    var url = SERVER + "/subs/" + kind + "/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) +
+              "/" + id + "?ext=" + ext + "&track=" + P.subSel;
+    fetch(url).then(function(r){ if(!r.ok) throw new Error("subs"); return r.text(); }).then(function(txt){
+      if(P.cueKey !== key) return;
+      P.cues = parseVtt(txt); P.capIdx = -1; updateCaption();
+    }).catch(function(){
+      if(P.cueKey === key){ P.subSel = -1; updateTrackButtons(); menuNote("No se pudieron cargar los subtítulos."); }
+    });
+  }
+  function parseVtt(txt){
+    var cues = [];
+    var re = /^(?:(\d+):)?(\d{1,2}):(\d{2})\.(\d{3})\s+-->\s+(?:(\d+):)?(\d{1,2}):(\d{2})\.(\d{3})/;
+    function secs(h, m, s, ms){ return ((parseInt(h || "0", 10) * 60 + parseInt(m, 10)) * 60 + parseInt(s, 10)) + parseInt(ms, 10) / 1000; }
+    (txt || "").replace(/\r\n/g, "\n").split("\n\n").forEach(function(block){
+      var lines = block.split("\n");
+      for(var i = 0; i < lines.length; i++){
+        var mm = re.exec(lines[i]);
+        if(mm){
+          var text = lines.slice(i + 1).join("\n").replace(/<[^>]*>/g, "").replace(/\{[^}]*\}/g, "").trim();
+          if(text) cues.push({ start: secs(mm[1], mm[2], mm[3], mm[4]), end: secs(mm[5], mm[6], mm[7], mm[8]), text: text });
+          break;
+        }
+      }
+    });
+    cues.sort(function(a, b){ return a.start - b.start; });
+    return cues;
+  }
+  function paintCaption(txt){
+    var cap = $("vod-cap");
+    if(!txt){ cap.style.display = "none"; $("vod-cap-text").textContent = ""; return; }
+    $("vod-cap-text").textContent = txt;
+    cap.style.display = "block";
+  }
+  function updateCaption(){
+    if(!P.cues || P.subSel < 0) return;
+    var pos = vodPosition();
+    var cues = P.cues, i = P.capIdx, found = -1;
+    if(i < 0 || i >= cues.length || pos < cues[i].start || pos > cues[i].end + 30) i = 0;
+    for(var j = i; j < cues.length; j++){
+      if(cues[j].start > pos) break;
+      if(pos >= cues[j].start && pos <= cues[j].end){ found = j; break; }
+    }
+    if(found !== P.capIdx){ P.capIdx = found; paintCaption(found >= 0 ? cues[found].text : ""); }
+  }
+  var TB_ICON_AUDIO = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="10" width="3.4" height="4" rx="1.7" fill="#fff"/><rect x="10.3" y="5.5" width="3.4" height="13" rx="1.7" fill="#fff"/><rect x="17.1" y="8.5" width="3.4" height="7" rx="1.7" fill="#fff"/></svg>';
+  var TB_ICON_SUBS = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.6" y="5" width="18.8" height="14" rx="3.2" fill="none" stroke="#fff" stroke-width="1.7"/><text x="12" y="15.8" text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial, sans-serif">CC</text></svg>';
   var vbInit = false;
   function initVodBar(){
     if(vbInit) return;
@@ -2393,7 +2611,7 @@
     // la propia barra no la oculta: solo renueva su tiempo visible.
     var box = $("video-box");
     box.addEventListener("pointerdown", function(ev){
-      if(ev.target.closest && ev.target.closest("#vodbar")){ showVodBar(); return; }
+      if(ev.target.closest && (ev.target.closest("#vodbar") || ev.target.closest("#track-box"))){ showVodBar(); return; }
       if($("vodbar").classList.contains("show")){ hideVodBar(); } else { showVodBar(); }
     });
     box.addEventListener("mousemove", function(){
@@ -2403,6 +2621,10 @@
     $("vb-mute").addEventListener("click", function(){
       v.muted = !v.muted; syncMute(); showVodBar();
     });
+    $("btn-audio").innerHTML = TB_ICON_AUDIO;
+    $("btn-subs").innerHTML = TB_ICON_SUBS;
+    $("btn-audio").addEventListener("click", function(){ openTrackMenu("audio"); });
+    $("btn-subs").addEventListener("click", function(){ openTrackMenu("subs"); });
     v.addEventListener("volumechange", syncMute);
     $("vb-fs").addEventListener("click", function(){ enterHorizontal(); syncFsButtons(); showVodBar(); });
     $("vb-exitfs").addEventListener("click", function(){ exitHorizontal(); syncFsButtons(); showVodBar(); });
@@ -2482,19 +2704,22 @@
      a los 3 s mientras reproduce; en pausa queda visible. */
   function showVodBar(){
     $("vodbar").classList.add("show");
+    if(P.kind === "movie" || P.kind === "episode") $("track-box").classList.add("show");
     syncFsButtons();
     armVodBarHide();
   }
   function hideVodBar(){
     if(P.barTimer){ clearTimeout(P.barTimer); P.barTimer = null; }
     $("vodbar").classList.remove("show");
+    $("track-box").classList.remove("show");
+    closeTrackMenu();
   }
   function armVodBarHide(){
     if(P.barTimer) clearTimeout(P.barTimer);
     P.barTimer = null;
     var v = videoEl();
     if(v.paused || v.ended || P.vbScrubbing) return; // en pausa no se oculta
-    P.barTimer = setTimeout(function(){ $("vodbar").classList.remove("show"); }, 3000);
+    P.barTimer = setTimeout(function(){ hideVodBar(); }, 3000);
   }
   var VB_ICON_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="#fff"/></svg>';
   var VB_ICON_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="#fff"/><rect x="14" y="5" width="4" height="14" rx="1" fill="#fff"/></svg>';
@@ -2668,8 +2893,9 @@
     var url, alt = null;
     if(S.demo){ url = demoPlayUrl(m.streamId); }
     else { url = vodUrl("movie", m.streamId, m.extension); }
+    updateTrackButtons();
     attachSource(url, alt);
-    if(!S.demo) fetchMovieDuration(m.streamId);
+    if(!S.demo){ fetchMovieDuration(m.streamId); fetchTitleMeta("movie", m.streamId, m.extension); }
     startSaveTimer();
   }
   function playEpisode(seriesItem, ep){
@@ -2694,7 +2920,9 @@
     var url, alt = null;
     if(S.demo){ url = demoPlayUrl(isNaN(epNumId) ? 0 : epNumId); }
     else { url = vodUrl("series", ep.id, ep.extension); }
+    updateTrackButtons();
     attachSource(url, alt);
+    if(!S.demo) fetchTitleMeta("series", ep.id, ep.extension);
     startSaveTimer();
   }
   function resumeEpisode(seriesItem, entry){

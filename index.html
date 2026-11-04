@@ -1163,6 +1163,47 @@
         if(nn.indexOf(" " + NAME_RULES[i][1][j] + " ") >= 0) return NAME_RULES[i][0];
     return regionOf(catName);
   }
+  /* Prioridad al español (pedido de Sergio 4-nov): dentro de cada
+     categoría, los canales en español salen primero en las filas y
+     en las parrillas; dentro de cada grupo manda el orden de
+     siempre (el número de canal no cambia). Se detecta por la
+     categoría del proveedor (España, países hispanos, «Latino»…),
+     por el código de país al inicio del nombre (ES, MX, AR…) y por
+     nombres de cadenas en español (Telemundo, Univisión, TUDN…). */
+  var ES_CAT_RE = /(ESPA|LATINO|LATAM|XICO|ARGENTIN|COLOMBIA|CHILE|PER(U|Ú)|VENEZUEL|ECUADOR|BOLIVIA|PARAGUAY|URUGUAY|CUBA|DOMINICANA|PUERTO RICO|PANAM|COSTA RICA|NICARAGUA|HONDURAS|GUATEMALA|SALVADOR|CENTROAMERICA|SUDAMERICA|CARIBE)/;
+  var ES_NAME_RE = /(ESPAÑOL|ESPANOL|CASTELLANO|LATINO|TELEMUNDO|UNIVISION|UNIMAS|GALAVISION|ESTRELLA TV|TUDN|ESPN DEPORTES|FOX DEPORTES|AZTECA)/;
+  var ES_PRE_RE = /^(ES|MX|AR|CO|CL|PE|VE|EC|BO|PY|UY|CU|DO|PR|PA|CR|NI|HN|GT|SV)( |$)/;
+  function isSpanishChannel(ch, catName){
+    if(ES_CAT_RE.test(clsNorm(catName))) return true;
+    var nm = clsNorm(ch.name);
+    return ES_NAME_RE.test(nm) || ES_PRE_RE.test(nm);
+  }
+  function spanishFirst(list){
+    var es = [], rest = [];
+    list.forEach(function(ch){ (ch.isSpanish ? es : rest).push(ch); });
+    return es.concat(rest);
+  }
+  /* Canales apartados por la revisión canal por canal del servidor
+     (canales-muertos.json): los que no devuelven video no salen en
+     ninguna lista. Sin archivo o sin red, no se aparta nada. */
+  var deadIdsSet = null;
+  function isDeadChannel(ch){
+    return !!(deadIdsSet && deadIdsSet[String(ch.streamId)]);
+  }
+  function fetchDeadChannels(){
+    if(S.demo) return;
+    fetch(SERVER + "/canales-muertos.json").then(function(r){ return r.json(); }).then(function(j){
+      if(j && Array.isArray(j.ids)){
+        var set = {};
+        j.ids.forEach(function(id){ set[String(id)] = 1; });
+        deadIdsSet = set;
+        if(S.live){
+          S.live = wrapLive(S.live.cats, S.live.channels, S.live.master);
+          if(S.section === "live" && !S.searchActive) renderLiveRows();
+        }
+      }
+    }).catch(function(){});
+  }
   function loadLiveData(){
     if(S.live) return Promise.resolve(S.live);
     if(S.demo){
@@ -1179,6 +1220,7 @@
       var master = assignNumbersPersisted(cats, channels);
       S.live = wrapLive(cats, channels, master);
       fetchDailyEvents();
+      fetchDeadChannels();
       return S.live;
     });
   }
@@ -1194,8 +1236,9 @@
       ch.isEvent = isEventChannel(ch, cn);
       ch.dailyEvent = isDailyEvent(ch, cn);
       ch.own = ch.isEvent ? "" : ownCategoryOf(ch, cn);
+      ch.isSpanish = isSpanishChannel(ch, cn);
     });
-    var normals = master.filter(function(ch){ return !ch.isEvent; });
+    var normals = master.filter(function(ch){ return !ch.isEvent && !isDeadChannel(ch); });
     return { cats: cats, channels: channels, master: master, byNumber: byNumber, catName: catName,
              normals: normals, probedIds: null };
   }
@@ -1207,7 +1250,7 @@
     var out = [];
     if(!S.live) return out;
     S.live.master.forEach(function(ch){
-      if(!ch.isEvent) return;
+      if(!ch.isEvent || isDeadChannel(ch)) return;
       if(ch.dailyEvent || (S.live.probedIds && S.live.probedIds[String(ch.streamId)])) out.push(ch);
     });
     return out;
@@ -2021,7 +2064,7 @@
       rowsHost.classList.add("hidden");
       searchHost.classList.remove("hidden");
       var query = norm(q);
-      var nameList = S.live.master.filter(function(ch){ return norm(ch.name).indexOf(query) >= 0; });
+      var nameList = S.live.master.filter(function(ch){ return !isDeadChannel(ch) && norm(ch.name).indexOf(query) >= 0; });
       renderLiveResults(nameList, [], query.length >= 2);
       window.scrollTo(0, 0);
       if(query.length < 2) return;
@@ -2032,7 +2075,7 @@
         nameList.forEach(function(ch){ seen[String(ch.streamId)] = 1; });
         var progList = [];
         S.live.master.forEach(function(ch){
-          if(seen[String(ch.streamId)]) return;
+          if(seen[String(ch.streamId)] || isDeadChannel(ch)) return;
           var t = guideNowTitle(ch.name);
           if(t && norm(t).indexOf(query) >= 0) progList.push({ ch: ch, title: t });
         });
@@ -2072,6 +2115,8 @@
       if(!byOwn[b]) byOwn[b] = [];
       byOwn[b].push(ch);
     });
+    // Primero los canales en español dentro de cada categoría.
+    Object.keys(byOwn).forEach(function(b){ byOwn[b] = spanishFirst(byOwn[b]); });
     TAXONOMY.forEach(function(bucket){
       var full = byOwn[bucket];
       if(!full || !full.length) return;

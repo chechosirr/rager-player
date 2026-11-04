@@ -180,6 +180,9 @@
   .search-row{display:flex; gap:10px; padding:14px var(--pad) 4px; flex-wrap:wrap;}
   .search-row input{flex:1; min-width:200px; background:var(--panel); border:1px solid var(--line); border-radius:10px; color:var(--txt); padding:12px 14px; font-size:16px; outline:none;}
   .search-row input:focus{border-color:var(--red);}
+  .btn-search{background:var(--red); color:#fff; border:none; border-radius:10px; padding:12px 20px; font-family:inherit; font-size:15px; font-weight:700; cursor:pointer; flex:none;}
+  .btn-search:active{filter:brightness(1.18);}
+  .search-backbar{padding:2px 0 10px;}
   .row-block{margin-top:22px;}
   .row-title{font-size:var(--row-title); font-weight:700; padding:0 var(--pad); margin-bottom:12px;}
   /* Fila «Top 10 semanal» (pedido de Sergio): el título queda en ÁMBAR
@@ -235,6 +238,14 @@
   /* Episodios */
   .ep-wrap{padding:18px var(--pad) 70px; max-width:1000px;}
   .season-chips{display:flex; gap:8px; flex-wrap:wrap; margin:14px 0 18px;}
+  /* Vista previa (detalle) de película y cabecera de la de serie:
+     imagen grande, metadatos, descripción y botón «Ver». */
+  .detail-wrap{padding:18px var(--pad) 70px; max-width:860px;}
+  .detail-hero{position:relative; border-radius:14px; overflow:hidden; background:#1b1b21; aspect-ratio:16/9; margin-top:12px;}
+  .detail-hero img{width:100%; height:100%; object-fit:cover; display:block;}
+  .detail-meta{color:var(--mut); font-size:14px; margin-top:14px;}
+  .detail-plot{color:#e8e8e8; line-height:1.55; margin-top:10px; font-size:15px;}
+  .detail-play{display:inline-block; margin-top:20px; font-size:17px; padding:14px 30px;}
   .chip{background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:999px; padding:8px 16px; font-size:14px;}
   .chip.on{background:var(--red); border-color:var(--red); color:#fff; font-weight:700;}
   .ep-item{display:flex; align-items:center; gap:14px; width:100%; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:10px; text-align:left; color:var(--txt);}
@@ -378,6 +389,7 @@
     </div>
     <div class="search-row" style="padding:0 0 6px;">
       <input id="grid-filter" type="search" placeholder="Filtrar por nombre…" autocomplete="off">
+      <button id="btn-grid-search" class="btn-search" type="button">Buscar</button>
     </div>
     <div id="grid-body"></div>
   </div>
@@ -397,8 +409,32 @@
       <button id="ep-back" class="btn-ghost" type="button">← Volver</button>
       <div class="gtitle" id="ep-title"></div>
     </div>
+    <div id="ep-hero" class="detail-hero hidden"><img id="ep-hero-img" alt=""></div>
+    <div id="ep-meta" class="detail-meta hidden"></div>
+    <p id="ep-plot" class="detail-plot hidden"></p>
     <div id="ep-seasons" class="season-chips"></div>
     <div id="ep-list"></div>
+  </div>
+</section>
+
+<!-- ================= DETALLE DE PELÍCULA ================= -->
+<section id="view-detail" class="hidden">
+  <div class="brandbar">
+    <div class="brand">Rager</div>
+    <span id="detail-demo-badge" class="badge-demo hidden">MODO DEMO</span>
+    <div class="bar-right">
+      <button id="detail-chip" class="chip" type="button" aria-haspopup="menu" aria-expanded="false"></button>
+    </div>
+  </div>
+  <div class="detail-wrap">
+    <div class="grid-head">
+      <button id="detail-back" class="btn-ghost" type="button">← Volver</button>
+      <div class="gtitle" id="detail-title"></div>
+    </div>
+    <div class="detail-hero"><img id="detail-img" alt=""></div>
+    <div id="detail-meta" class="detail-meta"></div>
+    <p id="detail-plot" class="detail-plot"></p>
+    <button id="detail-play" class="btn-search detail-play" type="button">▶ Ver ahora</button>
   </div>
 </section>
 
@@ -950,6 +986,17 @@
       return S.series;
     });
   }
+  /* Respuesta completa de get_series_info en caché: de ella salen los
+     episodios (loadEpisodes) y la ficha de la serie (descripción y
+     metadatos de la cabecera en la vista de episodios). */
+  function loadSeriesRoot(seriesItem){
+    var key = String(seriesItem.seriesId);
+    if(!S.seriesRootCache) S.seriesRootCache = {};
+    if(S.seriesRootCache[key]) return S.seriesRootCache[key];
+    var p = api("get_series_info", "&series_id=" + encodeURIComponent(key)).catch(function(){ return null; });
+    S.seriesRootCache[key] = p;
+    return p;
+  }
   function loadEpisodes(seriesItem){
     var key = String(seriesItem.seriesId);
     if(S.episodesCache[key]) return Promise.resolve(S.episodesCache[key]);
@@ -958,7 +1005,8 @@
       S.episodesCache[key] = eps;
       return Promise.resolve(eps);
     }
-    return api("get_series_info", "&series_id=" + encodeURIComponent(key)).then(function(root){
+    return loadSeriesRoot(seriesItem).then(function(root){
+      if(!root) throw new Error("sin datos");
       var out = [];
       var bySeason = (root && root.episodes) ? root.episodes : {};
       Object.keys(bySeason).forEach(function(seasonKey){
@@ -982,7 +1030,7 @@
      ================================================================ */
   // El splash NO está en VIEWS: es una capa fija que se gestiona aparte
   // (finishSplash) para poder desvanecerse SOBRE la pantalla siguiente.
-  var VIEWS = ["view-login","view-profiles","view-home","view-section","view-grid","view-episodes","view-player"];
+  var VIEWS = ["view-login","view-profiles","view-home","view-section","view-grid","view-episodes","view-detail","view-player"];
   function showView(id){
     VIEWS.forEach(function(v){ $(v).classList.toggle("hidden", v !== id); });
     if(id !== "view-home") stopBackdrop();
@@ -995,9 +1043,9 @@
   }
   function renderChips(){
     var html = chipHTML(S.profile);
-    ["home-chip","sec-chip","grid-chip","ep-chip"].forEach(function(id){ $(id).innerHTML = html; });
+    ["home-chip","sec-chip","grid-chip","ep-chip","detail-chip"].forEach(function(id){ $(id).innerHTML = html; });
     var demo = S.demo;
-    ["home-demo-badge","sec-demo-badge","grid-demo-badge","ep-demo-badge"].forEach(function(id){ $(id).classList.toggle("hidden", !demo); });
+    ["home-demo-badge","sec-demo-badge","grid-demo-badge","ep-demo-badge","detail-demo-badge"].forEach(function(id){ $(id).classList.toggle("hidden", !demo); });
   }
   function goProfiles(){
     stopPlayer();
@@ -1402,6 +1450,18 @@
     return block;
   }
 
+  /* Barra «← Volver» que encabeza los resultados de una búsqueda:
+     devuelve al inicio de la sección (las filas, sin texto). */
+  function searchBackBar(onBack){
+    var bar = document.createElement("div");
+    bar.className = "search-backbar";
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "btn-ghost"; b.textContent = "← Volver";
+    b.addEventListener("click", onBack);
+    bar.appendChild(b);
+    return bar;
+  }
+
   /* ================================================================
      Parrilla genérica (Ver más / resultados / país / recientes)
      ================================================================ */
@@ -1484,6 +1544,7 @@
     var srow = document.createElement("div");
     srow.className = "search-row";
     srow.innerHTML = '<input id="live-search" type="search" placeholder="Buscar canal por nombre…" autocomplete="off">' +
+                     '<button id="btn-live-search" class="btn-search" type="button">Buscar</button>' +
                      '<button id="btn-countries" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Ver por países</button>';
     body.appendChild(srow);
 
@@ -1496,25 +1557,40 @@
     body.appendChild(searchHost);
 
     $("btn-countries").addEventListener("click", renderCountries);
-    $("live-search").addEventListener("input", function(){
-      var q = this.value;
-      if(!q.trim()){
-        searchHost.classList.add("hidden");
-        rowsHost.classList.remove("hidden");
-        return;
-      }
+    // La búsqueda SOLO corre al pulsar «Buscar» (o Enter): escribir no
+    // filtra nada. Tras buscar, «← Volver» devuelve al inicio de la
+    // sección (las filas, con el buscador vacío). Pedido de Sergio.
+    function backLiveSearch(){
+      $("live-search").value = "";
+      searchHost.classList.add("hidden");
+      searchHost.innerHTML = "";
+      rowsHost.classList.remove("hidden");
+      window.scrollTo(0, 0);
+    }
+    function runLiveSearch(){
+      var q = $("live-search").value;
+      if(!q.trim()){ backLiveSearch(); return; }
       rowsHost.classList.add("hidden");
       searchHost.classList.remove("hidden");
       var query = norm(q);
       var list = S.live.master.filter(function(ch){ return norm(ch.name).indexOf(query) >= 0; });
       searchHost.innerHTML = "";
+      searchHost.appendChild(searchBackBar(backLiveSearch));
       if(!list.length){
-        searchHost.innerHTML = '<div class="empty">Sin resultados para «' + esc(q) + '».</div>';
+        var e = document.createElement("div");
+        e.className = "empty";
+        e.textContent = "Sin resultados para «" + q + "».";
+        searchHost.appendChild(e);
         return;
       }
       var grid = document.createElement("div"); grid.className = "grid";
       list.forEach(function(ch){ grid.appendChild(channelCard(ch)); });
       searchHost.appendChild(grid);
+      window.scrollTo(0, 0);
+    }
+    $("btn-live-search").addEventListener("click", runLiveSearch);
+    $("live-search").addEventListener("keydown", function(ev){
+      if(ev.key === "Enter"){ ev.preventDefault(); runLiveSearch(); }
     });
 
     renderLiveRows(rowsHost);
@@ -1616,7 +1692,7 @@
     return byRatingDesc(picked);   // se muestran por rating descendente; el orden ES el ranking
   }
   function moviePosterItem(m, onClick){
-    return { title: m.name, poster: m.icon || "", sub: m.extra || "", onClick: onClick || function(){ playMovie(m); } };
+    return { title: m.name, poster: m.icon || "", sub: m.extra || "", onClick: onClick || function(){ openMovieDetail(m); } };
   }
   function seriesPosterItem(s, onClick){
     return { title: s.name, poster: s.cover || "", sub: "", onClick: onClick || function(){ openSeries(s); } };
@@ -1632,7 +1708,8 @@
     body.appendChild(head);
     var srow = document.createElement("div");
     srow.className = "search-row";
-    srow.innerHTML = '<input id="vod-search" type="search" placeholder="Buscar por título…" autocomplete="off">';
+    srow.innerHTML = '<input id="vod-search" type="search" placeholder="Buscar por título…" autocomplete="off">' +
+                     '<button id="btn-vod-search" class="btn-search" type="button">Buscar</button>';
     body.appendChild(srow);
     var rowsHost = document.createElement("div");
     body.appendChild(rowsHost);
@@ -1688,20 +1765,29 @@
     }
     buildRows();
 
-    $("vod-search").addEventListener("input", function(){
-      var q = this.value;
-      if(!q.trim()){
-        searchHost.classList.add("hidden");
-        rowsHost.classList.remove("hidden");
-        return;
-      }
+    // Igual que en canales: solo se busca al pulsar «Buscar» (o Enter)
+    // y «← Volver» devuelve al inicio de la sección.
+    function backVodSearch(){
+      $("vod-search").value = "";
+      searchHost.classList.add("hidden");
+      searchHost.innerHTML = "";
+      rowsHost.classList.remove("hidden");
+      window.scrollTo(0, 0);
+    }
+    function runVodSearch(){
+      var q = $("vod-search").value;
+      if(!q.trim()){ backVodSearch(); return; }
       rowsHost.classList.add("hidden");
       searchHost.classList.remove("hidden");
       var query = norm(q);
       var list = items.filter(function(it){ return norm(it.name).indexOf(query) >= 0; });
       searchHost.innerHTML = "";
+      searchHost.appendChild(searchBackBar(backVodSearch));
       if(!list.length){
-        searchHost.innerHTML = '<div class="empty">Sin resultados para «' + esc(q) + '».</div>';
+        var e = document.createElement("div");
+        e.className = "empty";
+        e.textContent = "Sin resultados para «" + q + "».";
+        searchHost.appendChild(e);
         return;
       }
       var grid = document.createElement("div"); grid.className = "grid-po";
@@ -1710,6 +1796,11 @@
         grid.appendChild(posterCard(pi, { sub: pi.sub, onClick: pi.onClick }));
       });
       searchHost.appendChild(grid);
+      window.scrollTo(0, 0);
+    }
+    $("btn-vod-search").addEventListener("click", runVodSearch);
+    $("vod-search").addEventListener("keydown", function(ev){
+      if(ev.key === "Enter"){ ev.preventDefault(); runVodSearch(); }
     });
   }
   function vodRecentsCards(kind){
@@ -1722,7 +1813,7 @@
       entries.forEach(function(e){
         var m = byId[String(e.sid)];
         if(!m) return;
-        var pi = moviePosterItem(m, function(){ playMovie(m); });
+        var pi = moviePosterItem(m);
         var label = e.pos > 0 ? fmtTime(e.pos) : "";
         var prog = (e.dur && e.pos) ? (e.pos / e.dur) : 0;
         cards.push(posterCard(pi, { sub: pi.sub, recLabel: label, progress: prog, onClick: pi.onClick }));
@@ -1750,6 +1841,36 @@
     S.currentSeries = item;
     epState.item = item;
     $("ep-title").textContent = item.name;
+    // Cabecera de la vista previa: carátula grande de la serie y, cuando
+    // llega la ficha del panel, descripción y metadatos.
+    var hero = $("ep-hero"), heroImg = $("ep-hero-img");
+    if(item.cover){ heroImg.src = item.cover; hero.classList.remove("hidden"); }
+    else { heroImg.removeAttribute("src"); hero.classList.add("hidden"); }
+    var epMeta = $("ep-meta"), epPlot = $("ep-plot");
+    var meta0 = [];
+    if(item.year) meta0.push(String(item.year));
+    if(item.rating) meta0.push("★ " + Number(item.rating).toFixed(1));
+    epMeta.textContent = meta0.join(" · ");
+    epMeta.classList.toggle("hidden", !meta0.length);
+    epPlot.textContent = "";
+    epPlot.classList.add("hidden");
+    if(!S.demo){
+      loadSeriesRoot(item).then(function(root){
+        if(!root || !root.info || epState.item !== item) return;
+        var info = root.info;
+        var bd = (info.backdrop_path && info.backdrop_path[0]) || "";
+        if(bd){ heroImg.src = bd; hero.classList.remove("hidden"); }
+        var mm = [];
+        var yr = String(info.releaseDate || info.releasedate || "").slice(0, 4);
+        if(yr) mm.push(yr);
+        if(info.genre) mm.push(info.genre);
+        var rt = parseFloat(info.rating);
+        if(rt) mm.push("★ " + rt.toFixed(1));
+        if(mm.length){ epMeta.textContent = mm.join(" · "); epMeta.classList.remove("hidden"); }
+        var plot = info.plot || info.description || "";
+        if(plot){ epPlot.textContent = plot; epPlot.classList.remove("hidden"); }
+      });
+    }
     $("ep-seasons").innerHTML = "";
     $("ep-list").innerHTML = '<div class="loading">Cargando episodios…</div>';
     renderChips();
@@ -1947,6 +2068,51 @@
       if(parts.length) $("player-sub").textContent = parts.join(" · ");
     }).catch(function(){});
   }
+  /* ================================================================
+     Vista previa (detalle) de una película: imagen, descripción y
+     metadatos, con el botón «Ver ahora» (o «Continuar» si ya se
+     empezó). Al presionar una película YA NO se reproduce al momento:
+     primero se muestra esta ficha (pedido de Sergio).
+     ================================================================ */
+  var detailState = { movie: null, from: "view-section" };
+  function openMovieDetail(m){
+    detailState.movie = m;
+    detailState.from = ["view-home", "view-grid", "view-section"].filter(function(v){
+      return !$(v).classList.contains("hidden");
+    })[0] || "view-section";
+    $("detail-title").textContent = m.name;
+    var img = $("detail-img");
+    if(m.icon) img.src = m.icon; else img.removeAttribute("src");
+    var meta = [];
+    if(m.year) meta.push(String(m.year));
+    if(m.rating) meta.push("★ " + Number(m.rating).toFixed(1));
+    $("detail-meta").textContent = meta.join(" · ");
+    $("detail-plot").textContent = "";
+    var rec = null;
+    recentsOf("movies").forEach(function(e){ if(String(e.sid) === String(m.streamId)) rec = e; });
+    $("detail-play").textContent = (rec && rec.pos > 5)
+      ? "▶ Continuar en " + fmtTime(rec.pos)
+      : "▶ Ver ahora";
+    showView("view-detail");
+    if(S.demo) return;
+    api("get_vod_info", "&vod_id=" + encodeURIComponent(m.streamId)).then(function(root){
+      if(!root || !root.info || detailState.movie !== m) return;
+      var info = root.info;
+      var bd = (info.backdrop_path && info.backdrop_path[0]) || info.cover || "";
+      if(bd) img.src = bd;
+      var mm = [];
+      var yr = String(info.releasedate || info.releaseDate || "").slice(0, 4);
+      if(yr) mm.push(yr);
+      if(info.duration) mm.push(info.duration);
+      if(info.genre) mm.push(info.genre);
+      var rt = parseFloat(info.rating);
+      if(rt) mm.push("★ " + rt.toFixed(1));
+      if(mm.length) $("detail-meta").textContent = mm.join(" · ");
+      var plot = info.plot || info.description || "";
+      if(plot) $("detail-plot").textContent = plot;
+    }).catch(function(){});
+  }
+
   function playMovie(m){
     if(!P.open) P.returnTarget = captureReturn("movies");
     saveVodPosition();
@@ -2127,7 +2293,7 @@
   $("modal-profile").addEventListener("click", function(ev){ if(ev.target === this) closeProfileModal(); });
   $("pm-name").addEventListener("keydown", function(ev){ if(ev.key === "Enter"){ ev.preventDefault(); saveProfileFromModal(); } });
 
-  ["home-chip","sec-chip","grid-chip","ep-chip"].forEach(function(id){
+  ["home-chip","sec-chip","grid-chip","ep-chip","detail-chip"].forEach(function(id){
     $(id).addEventListener("click", function(){ toggleProfileMenu($(id)); });
   });
   $("pm-switch").addEventListener("click", function(){ closeProfileMenu(); goProfiles(); });
@@ -2169,8 +2335,13 @@
     if(S.gridReturn === "countries") renderCountries();
     else openSection(S.gridReturn || "live");
   });
-  $("grid-filter").addEventListener("input", function(){ renderGridBody(this.value); });
+  $("btn-grid-search").addEventListener("click", function(){ renderGridBody($("grid-filter").value); });
+  $("grid-filter").addEventListener("keydown", function(ev){
+    if(ev.key === "Enter"){ ev.preventDefault(); renderGridBody(this.value); }
+  });
   $("ep-back").addEventListener("click", function(){ openSection("series"); });
+  $("detail-back").addEventListener("click", function(){ showView(detailState.from); });
+  $("detail-play").addEventListener("click", function(){ if(detailState.movie) playMovie(detailState.movie); });
   $("btn-pback").addEventListener("click", function(){ closePlayer(); });
   // Miniatura AUTOMÁTICA (pedido de Sergio): sin botón; al salir de la
   // página con el video reproduciendo, se intenta dejarlo flotando (PiP).

@@ -186,21 +186,6 @@
   #view-home .brand.brand-away{ visibility:hidden; }
   #enter-anim{ position:fixed; inset:0; z-index:400; background:var(--bg); display:flex; align-items:center; justify-content:center; }
   #enter-anim.hidden{ display:none; }
-  /* Bola de luz de CARGA LENTA (pedido de Sergio 4-nov): SOLO la bola,
-     al centro de la pantalla, y SOLO cuando algo no carga o se tarda
-     (>1,4 s). Cuando la carga termina, la bola se DESINTEGRA en
-     partículas de luz (canvas #load-ball-fx). No tapa ni bloquea:
-     pointer-events none. */
-  #load-ball{ position:fixed; inset:0; z-index:300; display:none; place-items:center; pointer-events:none; }
-  #load-ball.on{ display:grid; }
-  /* Solo la bola, PEQUEÑA y flotando (corrección de Sergio 4-nov:
-     fuera el disco/recorte que la hacía ver como imagen incrustada).
-     El fondo oscuro del video se funde con la pantalla por
-     mix-blend-mode:screen + contraste, y queda solo la luz. */
-  #load-ball-video{ width:min(42vw,180px); height:auto; mix-blend-mode:screen; filter:contrast(1.45) brightness(1.12) saturate(1.15); -webkit-mask-image:radial-gradient(circle, #000 52%, transparent 71%); mask-image:radial-gradient(circle, #000 52%, transparent 71%); opacity:0; transition:opacity .25s ease; animation:ballFloat 3.4s ease-in-out infinite; }
-  #load-ball.show #load-ball-video{ opacity:1; }
-  @keyframes ballFloat{ 0%,100%{ transform:translateY(-7px); } 50%{ transform:translateY(7px); } }
-  #load-ball-fx{ position:absolute; inset:0; width:100%; height:100%; }
   #enter-canvas{ width:min(88vw,560px); height:auto; display:block; }
   .sec-head{padding:16px var(--pad) 0;}
   .sec-title{font-size:var(--screen-title); font-weight:800;}
@@ -431,11 +416,6 @@
   <canvas id="enter-canvas" width="1280" height="400"></canvas>
 </div>
 
-<!-- Bola de luz: indicador de carga lenta (se muestra solo si algo se tarda) -->
-<div id="load-ball" aria-hidden="true">
-  <video id="load-ball-video" muted loop playsinline preload="auto" crossorigin="anonymous" src="https://puente.ragerservices.net/bola-luz.mp4"></video>
-  <canvas id="load-ball-fx"></canvas>
-</div>
 
 <!-- ================= PANEL DE INICIO ================= -->
 <section id="view-home" class="hidden">
@@ -1044,116 +1024,15 @@
   }
 
   /* ================================================================
-     BOLA DE LUZ — indicador de carga lenta (pedido de Sergio 4-nov)
-     Solo aparece si una carga se tarda más de 1,4 s; cuando todo lo
-     pendiente termina, la bola se desintegra en partículas de luz.
-     ================================================================ */
-  var ballPending = 0, ballTimer = null, ballVisible = false,
-      ballShownAt = 0, ballBusy = false;
-  function ballShow(){
-    if(ballVisible || ballBusy) return;
-    var box = $("load-ball"); if(!box) return;
-    ballVisible = true; ballShownAt = Date.now();
-    box.classList.add("on");
-    var v = $("load-ball-video");
-    try{ if(v && v.paused){ var pr = v.play(); if(pr && pr.catch) pr.catch(function(){}); } }catch(e){}
-    requestAnimationFrame(function(){ box.classList.add("show"); });
-  }
-  function ballHide(){
-    if(!ballVisible) return;
-    ballVisible = false;
-    var wait = Math.max(0, 500 - (Date.now() - ballShownAt));
-    setTimeout(ballDisintegrate, wait);
-  }
-  function ballDisintegrate(){
-    var box = $("load-ball"); if(!box) return;
-    var v = $("load-ball-video"), cv = $("load-ball-fx");
-    box.classList.remove("show");
-    function plainOut(){ box.classList.remove("on"); try{ if(v) v.pause(); }catch(e){} }
-    try{
-      if(!v || !cv || v.readyState < 2 || !v.videoWidth){ setTimeout(plainOut, 260); return; }
-      var dpr = Math.min(2, window.devicePixelRatio || 1);
-      cv.width = innerWidth * dpr; cv.height = innerHeight * dpr;
-      var ctx = cv.getContext("2d");
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      var rect = v.getBoundingClientRect();
-      var off = document.createElement("canvas"); off.width = 160; off.height = 90;
-      var octx = off.getContext("2d");
-      octx.drawImage(v, 0, 0, 160, 90);
-      var img = octx.getImageData(0, 0, 160, 90).data;
-      var cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
-      var parts = [];
-      for(var i = 0; i < 6000 && parts.length < 750; i++){
-        var px = (Math.random() * 160) | 0, py = (Math.random() * 90) | 0;
-        var idx = (py * 160 + px) * 4;
-        var r = img[idx], g = img[idx + 1], b = img[idx + 2];
-        if((r + g + b) / 3 < 55) continue;
-        var x = rect.left + (px / 160) * rect.width, y = rect.top + (py / 90) * rect.height;
-        var dx = x - cx, dy = y - cy, dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        parts.push({
-          x: x, y: y,
-          vx: dx / dist * (0.4 + Math.random() * 1.7),
-          vy: dy / dist * (0.4 + Math.random() * 1.7) - 0.5 - Math.random() * 1.1,
-          life: 0, ttl: 480 + Math.random() * 560,
-          c: "rgb(" + r + "," + g + "," + b + ")", s: 1 + Math.random() * 2.3
-        });
-      }
-      try{ v.pause(); }catch(e){}
-      if(!parts.length){ plainOut(); return; }
-      ballBusy = true;
-      var last = performance.now();
-      (function step(now){
-        var dt = Math.min(50, now - last); last = now;
-        ctx.clearRect(0, 0, innerWidth, innerHeight);
-        var alive = false;
-        for(var j = 0; j < parts.length; j++){
-          var p = parts[j];
-          p.life += dt;
-          if(p.life >= p.ttl) continue;
-          alive = true;
-          var k = p.life / p.ttl;
-          p.x += p.vx * dt * 0.055;
-          p.y += p.vy * dt * 0.055;
-          p.vy -= 0.0011 * dt;
-          ctx.globalAlpha = (1 - k) * 0.95;
-          ctx.fillStyle = p.c;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, Math.max(0.3, p.s * (1 - k * 0.5)), 0, 6.2832);
-          ctx.fill();
-        }
-        ctx.globalAlpha = 1;
-        if(alive){ requestAnimationFrame(step); }
-        else{ ctx.clearRect(0, 0, innerWidth, innerHeight); box.classList.remove("on"); ballBusy = false; }
-      })(last);
-    }catch(e){ plainOut(); }
-  }
-  function trackLoad(p){
-    ballPending++;
-    if(!ballTimer && !ballVisible){
-      ballTimer = setTimeout(function(){
-        ballTimer = null;
-        if(ballPending > 0) ballShow();
-      }, 1400);
-    }
-    function done(){
-      ballPending = Math.max(0, ballPending - 1);
-      if(ballPending === 0){
-        if(ballTimer){ clearTimeout(ballTimer); ballTimer = null; }
-        ballHide();
-      }
-    }
-    return p.then(function(val){ done(); return val; }, function(err){ done(); throw err; });
-  }
-  /* ================================================================
      API Xtream (player_api.php)
      ================================================================ */
   function api(action, extra){
     var url = SERVER + "/player_api.php?username=" + encodeURIComponent(S.user) +
               "&password=" + encodeURIComponent(S.pass) + (action ? "&action=" + action : "") + (extra || "");
-    return trackLoad(fetch(url).then(function(r){
+    return fetch(url).then(function(r){
       if(!r.ok){ var e = new Error("http " + r.status); e.httpStatus = r.status; throw e; }
       return r.json();
-    }));
+    });
   }
   function parseRating(o){
     var r = o ? o.rating : null;

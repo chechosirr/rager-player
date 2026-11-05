@@ -3877,6 +3877,17 @@
         }
         return false;
       }
+      // Sin suscripción NO se entra al reproductor (aunque el login
+      // ya deje entrar en la página web): se muestra el aviso.
+      if(res.j && res.j.hasService === false){
+        btn.disabled = false; btn.textContent = "ENTRAR";
+        lastAuthError = "noservice";
+        if(!silent){
+          if(res.j.status === "pending") showSubPrompt("Tu cuenta está pendiente de activación y todavía no tiene una suscripción activa. Para adquirir tu suscripción o pedir tu activación:");
+          else showSubPrompt("Esta cuenta no tiene una suscripción IPTV asociada. Para adquirir tu suscripción:");
+        }
+        return false;
+      }
       S.token = res.j.token; S.user = res.j.email || u; S.accName = res.j.name || "";
       return finishAuth(silent);
     }).catch(function(){

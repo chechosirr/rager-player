@@ -508,7 +508,7 @@
       </div>
       <button id="btn-login" class="btn-main" type="submit">ENTRAR</button>
     </form>
-    <button id="btn-demo" class="btn-demo" type="button">VER DEMO</button>
+    <button id="btn-demo" class="btn-demo" type="button">¿No tienes cuenta? Créala.</button>
     <div id="login-msg" class="msg"></div>
     <div id="sub-prompt" class="sub-prompt hidden">
       <div class="sub-prompt-title">Necesitas una suscripción para entrar</div>
@@ -516,9 +516,15 @@
       <a id="sub-prompt-btn" class="sub-prompt-btn" href="https://wa.me/15704698339?text=Hola%2C%20quiero%20adquirir%20una%20suscripci%C3%B3n%20de%20Rager" target="_blank" rel="noopener">Adquirir por WhatsApp</a>
       <div id="sub-prompt-num" class="sub-prompt-num hidden">Escríbenos por WhatsApp a este número:<b>+1 (570) 469-8339</b></div>
     </div>
-    <p class="login-create">¿Aún no tienes cuenta? <a href="https://ragerservices.net/cuenta.html">Crea tu cuenta Rager</a></p>
+    
   </div>
-  <p class="login-note">Entra con tu cuenta Rager: el correo y la contraseña que registraste en ragerservices.net. Nunca necesitas los datos de tu línea.</p>
+  <div id="create-prompt" class="sub-prompt hidden">
+      <div class="sub-prompt-title">Crea tu cuenta Rager</div>
+      <p><b>Primera opción:</b> contáctanos por WhatsApp y te creamos la cuenta:</p>
+      <div class="sub-prompt-num" style="margin-top:2px">WhatsApp<b>+1 (570) 469-8339</b></div>
+      <p style="margin-top:12px"><b>Segunda opción:</b> créala tú mismo en nuestra página <b>ragerservices.net</b>, en la sección Mi cuenta.</p>
+    </div>
+    <p class="login-note">Entra con tu cuenta Rager: el correo y la contraseña que registraste en ragerservices.net. Nunca necesitas los datos de tu línea.</p>
 </section>
 
 <!-- ================= PERFILES ================= -->
@@ -757,7 +763,7 @@
   var PROFILE_COLORS = ["#E53935","#1E88E5","#43A047","#8E24AA","#FB8C00","#00ACC1"];
   var MAX_PROFILES = 4;
 
-  var MSG_BLOCKED = "No se pudo conectar con el servidor de señales. Revisa tu conexión a internet e inténtalo de nuevo; mientras tanto, puedes entrar con el botón VER DEMO.";
+  var MSG_BLOCKED = "No se pudo conectar con el servidor de señales. Revisa tu conexión a internet e inténtalo de nuevo; si aún no tienes cuenta, créala con el botón «¿No tienes cuenta? Créala.»";
   var MSG_BLOCKED_SHORT = "No se pudo reproducir la señal. Revisa tu conexión e inténtalo de nuevo.";
   var MSG_BAD_CREDENTIALS = "Correo o contraseña incorrectos. Revisa los datos de tu cuenta Rager e inténtalo de nuevo.";
   var MSG_NO_CONNECTION = "No se pudo conectar con el servidor de señales. Comprueba tu conexión e inténtalo de nuevo.";
@@ -3918,7 +3924,11 @@
     if(!u || !p){ showMsg("err", "Escribe tu correo y tu contraseña para entrar."); return; }
     doLogin(u, p, false);
   });
-  $("btn-demo").addEventListener("click", enterDemo);
+  $("btn-demo").addEventListener("click", function(){
+    if(esTV()){ var cp = $("create-prompt"); if(cp){ cp.classList.remove("hidden"); cp.scrollIntoView({ block: "nearest" }); } }
+    else { location.href = "https://ragerservices.net/cuenta.html?crear=1"; }
+  });
+  function esTV(){ return /SmartTV|SMART-TV|Tizen|WebOS|NetCast|HbbTV|BRAVIA|AFT|Android TV|CrKey|Roku|VIZIO/i.test(navigator.userAgent || ""); }
   $("btn-edit-profiles").addEventListener("click", function(){
     S.editingProfiles = !S.editingProfiles;
     renderProfiles();

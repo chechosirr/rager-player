@@ -1135,11 +1135,15 @@
   // Sesión recordada (SessionStore): se guarda en el navegador como la app la guarda en el dispositivo.
   function saveSession(){ if(S.token){ lsSet("rager_sess", { t: S.token, u: S.user }); } }
   function loadSession(){ return lsGet("rager_sess"); }
+  // Cuenta dueña de la sesión guardada al ABRIR la página: dice de
+  // quién son los perfiles antiguos guardados sin cuenta en la clave.
+  window.__ragerPrevUser = ((loadSession() || {}).u || "").toLowerCase();
   function clearSession(){ lsDel("rager_sess"); }
 
   // Perfiles (ProfileStore): dos almacenes, real y demo.
-  function profilesKey(){ return S.demo ? "rager_profiles_demo" : "rager_profiles"; }
-  function activeKey(){ return S.demo ? "rager_profiles_demo_active" : "rager_profiles_active"; }
+  function acctSuffix(){ return "_" + String(S.user || "").toLowerCase(); }
+  function profilesKey(){ return S.demo ? "rager_profiles_demo" : (S.user ? "rager_profiles" + acctSuffix() : "rager_profiles"); }
+  function activeKey(){ return S.demo ? "rager_profiles_demo_active" : (S.user ? "rager_profiles_active" + acctSuffix() : "rager_profiles_active"); }
   function loadProfiles(){ var l = lsGet(profilesKey()); return Array.isArray(l) ? l : []; }
 
   /* ================================================================
@@ -1166,28 +1170,51 @@
   function syncPerfiles(){
     if(S.demo || !S.token) return Promise.resolve();
     var email = (S.user || "").toLowerCase();
-    var owner = lsGet("rager_profiles_owner") || "";
-    var local = loadProfiles();
-    var localOwn = (owner === "" || owner === email) ? local : [];
-    var trajo = fetch(SERVER + "/cuentas/perfiles", { headers: { "Authorization": "Bearer " + S.token } })
-      .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(j){
-        if(!j) return;
-        var remote = Array.isArray(j.profiles) ? j.profiles : [];
-        if(remote.length){
-          perfilesSyncBusy = true;
-          saveProfiles(remote);
-          perfilesSyncBusy = false;
-          lsSet("rager_profiles_owner", email);
-          var act = getActiveProfileId();
-          if(!remote.some(function(p){ return p.id === act; })) setActiveProfileId(-1);
-        } else if(localOwn.length){
-          lsSet("rager_profiles_owner", email);
-          pushPerfiles(localOwn);
-        } else {
-          lsSet("rager_profiles_owner", email);
-        }
-      }).catch(function(){});
+    var prev = window.__ragerPrevUser || "";
+    function adoptarSiToca(){
+      // Perfiles antiguos (clave global sin cuenta): solo los adopta
+      // la cuenta que ya usaba este navegador (su sesión era la
+      // guardada al abrir) o la del administrador. Cualquier otra
+      // cuenta ni los ve ni se los lleva: cada cuenta, lo suyo.
+      var legacy = lsGet("rager_profiles");
+      if(!Array.isArray(legacy) || !legacy.length) return;
+      if(loadProfiles().length) return;
+      // Si la lista ya trae marca de dueño, ya pasó por una
+      // sincronización: manda lo que haya en el servidor de su
+      // cuenta y esta copia local queda dormida, sin tocar.
+      if(lsGet("rager_profiles_owner")) return;
+      if(prev !== "" && prev !== email && S.role !== "admin") return;
+      lsSet(profilesKey(), legacy.slice(0, MAX_PROFILES));
+      lsDel("rager_profiles");
+    }
+    function seguir(){
+      adoptarSiToca();
+      var local = loadProfiles();
+      return fetch(SERVER + "/cuentas/perfiles", { headers: { "Authorization": "Bearer " + S.token } })
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(j){
+          if(!j) return;
+          var remote = Array.isArray(j.profiles) ? j.profiles : [];
+          if(remote.length){
+            perfilesSyncBusy = true;
+            saveProfiles(remote);
+            perfilesSyncBusy = false;
+            var act = getActiveProfileId();
+            if(!remote.some(function(p){ return p.id === act; })) setActiveProfileId(-1);
+          } else if(local.length){
+            pushPerfiles(local);
+          }
+        }).catch(function(){});
+    }
+    var trajo;
+    if(typeof S.role === "string"){ trajo = seguir(); }
+    else {
+      trajo = fetch(SERVER + "/cuentas/me", { headers: { "Authorization": "Bearer " + S.token } })
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(j){ S.role = (j && j.role) || ""; })
+        .catch(function(){ S.role = ""; })
+        .then(seguir);
+    }
     // La entrada nunca se cuelga por la sincronización: a los 4 s
     // se entra con lo que haya en local.
     return Promise.race([trajo, new Promise(function(res){ setTimeout(res, 4000); })]);
@@ -1199,7 +1226,7 @@
   function profileInitial(p){ var n = (p.name||"").trim(); return n ? n.charAt(0).toUpperCase() : "?"; }
 
   // Recientes (RecentStore): por perfil y sección, con posición de reanudación.
-  function recentsKey(){ return S.demo ? "rager_recents_demo" : "rager_recents"; }
+  function recentsKey(){ return S.demo ? "rager_recents_demo" : (S.user ? "rager_recents" + acctSuffix() : "rager_recents"); }
   function loadRecentsAll(){ var r = lsGet(recentsKey()); return (r && typeof r === "object") ? r : {}; }
   function recentsOf(section){
     if(!S.profile) return [];
@@ -4005,7 +4032,7 @@
         }
         return false;
       }
-      S.token = res.j.token; S.user = res.j.email || u; S.accName = res.j.name || "";
+      S.token = res.j.token; S.user = res.j.email || u; S.accName = res.j.name || ""; S.role = res.j.role || "";
       return finishAuth(silent);
     }).catch(function(){
       btn.disabled = false; btn.textContent = "ENTRAR";
@@ -4342,7 +4369,7 @@
           .then(function(r){ return r.ok ? r.json() : null; })
           .then(function(me){
             if(me && me.email){
-              S.token = tok; S.user = me.email; S.accName = me.name || "";
+              S.token = tok; S.user = me.email; S.accName = me.name || ""; S.role = me.role || "";
               doLoginToken(true).then(function(ok){ if(!ok){ clearSession(); S.token = null; showView("view-login"); } });
             } else showView("view-login");
           }).catch(function(){ showView("view-login"); });

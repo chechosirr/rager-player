@@ -1141,7 +1141,58 @@
   function profilesKey(){ return S.demo ? "rager_profiles_demo" : "rager_profiles"; }
   function activeKey(){ return S.demo ? "rager_profiles_demo_active" : "rager_profiles_active"; }
   function loadProfiles(){ var l = lsGet(profilesKey()); return Array.isArray(l) ? l : []; }
-  function saveProfiles(list){ lsSet(profilesKey(), list.slice(0, MAX_PROFILES)); }
+
+  /* ================================================================
+     Perfiles sincronizados con la cuenta (pedido de Sergio 5-nov):
+     los perfiles («¿Quién está viendo?») viven en la cuenta Rager,
+     así aparecen en cualquier dispositivo donde se inicie sesión.
+     Al entrar: si el servidor tiene perfiles, mandan esos; si el
+     servidor no tiene y aquí sí hay (y son de ESTA cuenta), se
+     suben — la primera sincronización desde este dispositivo. Si
+     los locales son de OTRA cuenta (marcados con otro correo), no
+     se tocan ni se suben. Al crear, editar o borrar un perfil,
+     saveProfiles() los sube solos. Los recientes de cada perfil
+     siguen siendo locales de cada dispositivo.
+     ================================================================ */
+  var perfilesSyncBusy = false;
+  function pushPerfiles(list){
+    if(S.demo || !S.token || perfilesSyncBusy) return;
+    fetch(SERVER + "/cuentas/perfiles", {
+      method: "PUT",
+      headers: { "Authorization": "Bearer " + S.token, "Content-Type": "application/json" },
+      body: JSON.stringify({ profiles: list })
+    }).catch(function(){});
+  }
+  function syncPerfiles(){
+    if(S.demo || !S.token) return Promise.resolve();
+    var email = (S.user || "").toLowerCase();
+    var owner = lsGet("rager_profiles_owner") || "";
+    var local = loadProfiles();
+    var localOwn = (owner === "" || owner === email) ? local : [];
+    var trajo = fetch(SERVER + "/cuentas/perfiles", { headers: { "Authorization": "Bearer " + S.token } })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){
+        if(!j) return;
+        var remote = Array.isArray(j.profiles) ? j.profiles : [];
+        if(remote.length){
+          perfilesSyncBusy = true;
+          saveProfiles(remote);
+          perfilesSyncBusy = false;
+          lsSet("rager_profiles_owner", email);
+          var act = getActiveProfileId();
+          if(!remote.some(function(p){ return p.id === act; })) setActiveProfileId(-1);
+        } else if(localOwn.length){
+          lsSet("rager_profiles_owner", email);
+          pushPerfiles(localOwn);
+        } else {
+          lsSet("rager_profiles_owner", email);
+        }
+      }).catch(function(){});
+    // La entrada nunca se cuelga por la sincronización: a los 4 s
+    // se entra con lo que haya en local.
+    return Promise.race([trajo, new Promise(function(res){ setTimeout(res, 4000); })]);
+  }
+  function saveProfiles(list){ var l = list.slice(0, MAX_PROFILES); lsSet(profilesKey(), l); pushPerfiles(l); }
   function getActiveProfileId(){ var v = lsGet(activeKey()); return (typeof v === "number") ? v : -1; }
   function setActiveProfileId(id){ lsSet(activeKey(), id); }
   function profileColor(p){ return PROFILE_COLORS[((p.color % PROFILE_COLORS.length) + PROFILE_COLORS.length) % PROFILE_COLORS.length]; }
@@ -3898,8 +3949,7 @@
         S.live = null; S.movies = null; S.series = null; S.episodesCache = {};
         lastAuthError = null;
         saveSession();
-        enterApp();
-        return true;
+        return syncPerfiles().then(function(){ enterApp(); return true; });
       }
       // La cuenta entró, pero su línea no es válida (vencida o inactiva).
       lastAuthError = "noservice";
@@ -3950,7 +4000,7 @@
         btn.disabled = false; btn.textContent = "ENTRAR";
         lastAuthError = "noservice";
         if(!silent){
-          if(res.j.status === "pending") showSubPrompt("Tu cuenta está pendiente de activación y todavía no tiene una suscripción activa. Para adquirir tu suscripción o pedir tu activación:");
+          if(res.j.lineState === "expired") showSubPrompt("Tu suscripción IPTV está vencida. Para renovarla y seguir viendo:");
           else showSubPrompt("Esta cuenta no tiene una suscripción IPTV asociada. Para adquirir tu suscripción:");
         }
         return false;

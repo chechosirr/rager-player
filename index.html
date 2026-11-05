@@ -4268,5 +4268,33 @@
   });
 })();
 </script>
+<script>
+;(function(){
+  var SVG = '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#9aa3b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  function addEye(inp){
+    if(!inp || inp.getAttribute("data-eye") === "1") return;
+    inp.setAttribute("data-eye", "1");
+    var w = document.createElement("span");
+    w.style.cssText = "position:relative;display:block";
+    inp.parentNode.insertBefore(w, inp);
+    w.appendChild(inp);
+    inp.style.paddingRight = "46px";
+    var b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("aria-label", "Mostrar u ocultar contrasena");
+    b.style.cssText = "position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:0;cursor:pointer;padding:4px;line-height:0;opacity:.75";
+    b.innerHTML = SVG;
+    b.addEventListener("click", function(){
+      var show = inp.type === "password";
+      inp.type = show ? "text" : "password";
+      b.style.opacity = show ? "1" : ".75";
+    });
+    w.appendChild(b);
+  }
+  function scan(){ document.querySelectorAll('input[type="password"], input[data-eye="1"]').forEach(addEye); }
+  scan();
+  new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
+})();
+</script>
 </body>
 </html>

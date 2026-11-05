@@ -867,8 +867,40 @@
     if(pool.length <= limit) return pool.slice();
     return kotlinShuffled(pool, weeklySeedBig(sectionKey)).slice(0, limit);
   }
+  /* Sin repetidos en el «Top 10 semanal» (pedido de Sergio): la
+     clave de un título ignora mayúsculas, el año entre paréntesis y
+     las coletillas de calidad; la de un canal ignora además el
+     prefijo de país («US:», «US|») y la puntuación. Réplica exacta
+     de RowMath de la app: ambas eligen lo mismo. */
+  var QUALITY_TOKENS = { "4k":1, "uhd":1, "fhd":1, "hd":1, "sd":1, "720p":1, "1080p":1, "2160p":1, "hevc":1, "h265":1, "x265":1 };
+  function stripTrailingQuality(s){
+    var parts = s.split(" ").filter(function(x){ return x.length > 0; });
+    while(parts.length > 1 && QUALITY_TOKENS[parts[parts.length-1]]) parts.pop();
+    return parts.join(" ");
+  }
+  function vodNameKey(name){
+    var s = String(name || "").toLowerCase().replace(/\s+/g, " ").trim();
+    for(var i=0;i<2;i++){
+      s = s.replace(/\s*[\(\[]\d{4}[\)\]]\s*$/, "");
+      s = stripTrailingQuality(s);
+    }
+    return s.replace(/\s+/g, " ").trim();
+  }
+  function liveNameKey(name){
+    var s = String(name || "").toLowerCase();
+    var bar = s.indexOf("|");
+    if(bar >= 0) s = s.slice(bar+1);
+    else { var colon = s.indexOf(":"); if(colon > 0 && colon <= 5) s = s.slice(colon+1); }
+    s = s.replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+    return stripTrailingQuality(s);
+  }
+  function dedupeByKey(items, keyFn){
+    var seen = {}, out = [];
+    items.forEach(function(it){ var k = keyFn(it); if(!seen[k]){ seen[k] = 1; out.push(it); } });
+    return out;
+  }
   function weeklyTopChannels(masterByNumber){
-    var pool = masterByNumber.slice(0, 40);
+    var pool = dedupeByKey(masterByNumber, function(ch){ return liveNameKey(ch.name); }).slice(0, 40);
     return weeklyPick(pool, "live-top10", 10);
   }
 
@@ -2512,7 +2544,7 @@
       var full = byOwn[bucket];
       if(!full || !full.length) return;
       host.appendChild(lazyRowBlock(bucket, false, function(){
-        return full.slice(0, 20).map(function(ch){ return channelCard(ch); });
+        return dailyRotation(full, "live-cat-" + bucket, 20).map(function(ch){ return channelCard(ch); });
       }, function(){
         openGrid({ kind: "channels", title: bucket, items: full });
         S.gridReturn = "live";
@@ -2543,7 +2575,7 @@
     groups.forEach(function(g){
       (function(grp){
         body.appendChild(lazyRowBlock(grp.country, false, function(){
-          return grp.channels.slice(0, 20).map(function(ch){ return channelCard(ch); });
+          return dailyRotation(grp.channels, "live-country-" + grp.country, 20).map(function(ch){ return channelCard(ch); });
         }, function(){
           openGrid({ kind: "channels", title: grp.country, items: grp.channels });
           S.gridReturn = "countries";
@@ -2576,7 +2608,7 @@
       var recent = items.filter(function(it){ return isRecentYear(it.year || 0); });
       if(recent.length >= 10) base = recent;
     }
-    var pool = byRatingDesc(base).slice(0, 30);
+    var pool = dedupeByKey(byRatingDesc(base), function(it){ return vodNameKey(it.name); }).slice(0, 30);
     var picked = weeklyPick(pool, sectionKey, 10);
     return byRatingDesc(picked);   // se muestran por rating descendente; el orden ES el ranking
   }

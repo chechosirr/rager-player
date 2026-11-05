@@ -1403,6 +1403,40 @@
       }
     }).catch(function(){});
   }
+  /* Películas y series apartadas por el monitor VOD del servidor
+     (peliculas-muertos.json): el título cuyo archivo no sirve no
+     sale en ninguna lista. Sin archivo o sin red, no se aparta
+     nada. */
+  var deadVodSet = null, deadSeriesSet = null;
+  function isDeadMovie(m){
+    return !!(deadVodSet && deadVodSet[String(m.streamId)]);
+  }
+  function isDeadSerie(s){
+    return !!(deadSeriesSet && deadSeriesSet[String(s.seriesId)]);
+  }
+  function fetchDeadVod(){
+    if(S.demo) return;
+    fetch(SERVER + "/peliculas-muertos.json").then(function(r){ return r.json(); }).then(function(j){
+      if(!j) return;
+      if(Array.isArray(j.peliculas)){
+        var set = {};
+        j.peliculas.forEach(function(id){ set[String(id)] = 1; });
+        deadVodSet = set;
+      }
+      if(Array.isArray(j.series)){
+        var set2 = {};
+        j.series.forEach(function(id){ set2[String(id)] = 1; });
+        deadSeriesSet = set2;
+      }
+      if(S.movies && deadVodSet){
+        S.movies.items = S.movies.items.filter(function(m){ return !isDeadMovie(m); });
+      }
+      if(S.series && deadSeriesSet){
+        S.series.items = S.series.items.filter(function(s){ return !isDeadSerie(s); });
+      }
+      if((S.section === "movies" || S.section === "series") && !S.searchActive) openSection(S.section);
+    }).catch(function(){});
+  }
   function loadLiveData(){
     if(S.live) return Promise.resolve(S.live);
     if(S.demo){
@@ -1420,6 +1454,7 @@
       S.live = wrapLive(cats, channels, master);
       fetchDailyEvents();
       fetchDeadChannels();
+      fetchDeadVod();
       return S.live;
     });
   }
@@ -1475,7 +1510,7 @@
                  categoryId: String(o.category_id), extension: o.container_extension || "mp4",
                  extra: year || (o.rating ? String(o.rating) : ""), year: nameYear(o.name), rating: parseRating(o),
                  added: parseInt(o.added, 10) || 0 };
-      }).filter(function(m){ return m.streamId !== 0; });
+      }).filter(function(m){ return m.streamId !== 0 && !isDeadMovie(m); });
       S.movies = { cats: cats, items: items };
       return S.movies;
     });
@@ -1488,7 +1523,7 @@
       var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
         return { seriesId: Number(o.series_id)||0, name: o.name || ("Serie " + o.series_id), cover: o.cover || "",
                  categoryId: String(o.category_id), year: parseInt(String(o.releaseDate || o.year || "").slice(0, 4), 10) || 0, rating: parseRating(o), added: parseEpochLoose(o.last_modified) };
-      }).filter(function(s){ return s.seriesId !== 0; });
+      }).filter(function(s){ return s.seriesId !== 0 && !isDeadSerie(s); });
       S.series = { cats: cats, items: items };
       return S.series;
     });

@@ -62,7 +62,7 @@
   .msg.err{display:block; background:#3a1416; border:1px solid #7a2027; color:#ffb4ab;}
   .msg.info{display:block; background:#2a2410; border:1px solid #6b5a17; color:#ffe082;}
   .btn-ghost{background:transparent; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:13px; white-space:nowrap;}
-  #sec-back,#grid-back,#ep-back,#detail-back,#btn-pback,#btn-countries-back{padding-left:20px; padding-right:20px;}
+  #sec-back,#grid-back,#ep-back,#detail-back,#btn-pback{padding-left:20px; padding-right:20px;}
   .btn-ghost:hover{border-color:var(--red);}
   .loading{text-align:center; color:var(--mut); padding:44px 10px; font-size:15px;}
   .empty{color:var(--mut); text-align:center; padding:40px 10px; font-size:15px; line-height:1.6;}
@@ -109,8 +109,11 @@
   /* Cabecera de SECCIÓN (TV en vivo / Películas / Series): tres zonas con
      la marca «RAGER» centrada de verdad respecto a todo el ancho — a la
      izquierda la flecha «←» (+ sello demo), al centro la marca y a la derecha
-     el chip del perfil. Solo esta cabecera lleva .secbar; el panel y las
-     cabeceras de parrilla/episodios siguen como están. */
+     el chip del perfil. La llevan la cabecera de sección y la de la
+     parrilla (desde 2026-11-05, por orden de Sergio: el header es
+     siempre el original y el único «←» es el suyo); el panel y las
+     cabeceras de episodios/detalle conservan su formato flotante,
+     también con su «←» dentro de la cabecera. */
   .brandbar.secbar{display:grid; grid-template-columns:1fr auto 1fr; align-items:center;}
   .secbar .bar-left{display:flex; align-items:center; gap:10px; flex-wrap:wrap; row-gap:6px; justify-self:start; min-width:0;}
   .secbar .brand{justify-self:center; text-align:center; font-size:clamp(25px,7.5vw,33px);}
@@ -596,16 +599,18 @@
 
 <!-- ================= PARRILLA ================= -->
 <section id="view-grid" class="hidden">
-  <div class="brandbar">
+  <div class="brandbar secbar">
+    <div class="bar-left">
+      <button id="grid-back" class="btn-ghost" type="button" aria-label="Volver">←</button>
+      <span id="grid-demo-badge" class="badge-demo hidden">MODO DEMO</span>
+    </div>
     <div class="brand">Rager</div>
-    <span id="grid-demo-badge" class="badge-demo hidden">MODO DEMO</span>
     <div class="bar-right">
       <button id="grid-chip" class="chip" type="button" aria-haspopup="menu" aria-expanded="false"></button>
     </div>
   </div>
   <div class="grid-wrap">
     <div class="grid-head">
-      <button id="grid-back" class="btn-ghost" type="button" aria-label="Volver">←</button>
       <div class="gtitle" id="grid-title"></div>
     </div>
     <div class="search-row" style="padding:0 0 6px;">
@@ -619,6 +624,7 @@
 <!-- ================= EPISODIOS ================= -->
 <section id="view-episodes" class="hidden">
   <div class="brandbar">
+    <button id="ep-back" class="btn-ghost" type="button" aria-label="Volver">←</button>
     <div class="brand">Rager</div>
     <span id="ep-demo-badge" class="badge-demo hidden">MODO DEMO</span>
     <div class="bar-right">
@@ -627,7 +633,6 @@
   </div>
   <div class="ep-wrap">
     <div class="grid-head">
-      <button id="ep-back" class="btn-ghost" type="button" aria-label="Volver">←</button>
       <div class="gtitle" id="ep-title"></div>
     </div>
     <div id="ep-hero" class="detail-hero hidden"><img id="ep-hero-img" alt=""></div>
@@ -641,6 +646,7 @@
 <!-- ================= DETALLE DE PELÍCULA ================= -->
 <section id="view-detail" class="hidden">
   <div class="brandbar">
+    <button id="detail-back" class="btn-ghost" type="button" aria-label="Volver">←</button>
     <div class="brand">Rager</div>
     <span id="detail-demo-badge" class="badge-demo hidden">MODO DEMO</span>
     <div class="bar-right">
@@ -649,7 +655,6 @@
   </div>
   <div class="detail-wrap">
     <div class="grid-head">
-      <button id="detail-back" class="btn-ghost" type="button" aria-label="Volver">←</button>
       <div class="gtitle" id="detail-title"></div>
     </div>
     <div class="detail-hero"><img id="detail-img" alt=""></div>
@@ -2676,8 +2681,10 @@
     resetLazyRows();
     var head = document.createElement("div");
     head.className = "sec-head";
-    head.innerHTML = '<button class="btn-ghost" id="btn-countries-back" type="button" aria-label="Volver">←</button>' +
-                     '<div class="sec-title" style="margin-top:12px;">Canales por países</div>';
+    // Sin botón de volver propio (orden de Sergio, 2026-11-05): el
+    // único «←» es el del header, y desde países devuelve a la
+    // sección de TV en vivo (ver el handler de #sec-back).
+    head.innerHTML = '<div class="sec-title" style="margin-top:12px;">Canales por países</div>';
     body.appendChild(head);
     var groups = groupByCountry();
     if(!groups.length){
@@ -2696,7 +2703,6 @@
       })(g);
     });
     showView("view-section");
-    $("btn-countries-back").addEventListener("click", function(){ openSection("live"); });
   }
 
 
@@ -3026,7 +3032,7 @@
     // metadatos del título NUEVO ya cargaron (P.metaReady).
     P.playSeq = (P.playSeq || 0) + 1;
     P.contentDur = 0; P.resumePos = 0; P.metaReady = false; P.isRemux = false;
-    P.userPaused = false; P.playStarted = false; P.lastT = -1; P.stallSince = 0; P.recoveries = 0; P.liveRetries = 0; P.liveRetryBase = 0;
+    P.userPaused = false; P.playStarted = false; P.lastT = -1; P.stallSince = 0; P.recoveries = 0; P.liveRetries = 0; P.liveRetryBase = 0; if(P.liveRetryTimer){ clearTimeout(P.liveRetryTimer); P.liveRetryTimer = null; }
     $("vb-cur").textContent = "0:00"; $("vb-dur").textContent = "—";
     var rr = $("vb-range"); rr.value = 0; paintRange(rr);
     // Pistas de audio/subtítulos: cada título empieza de cero.
@@ -3463,22 +3469,33 @@
       // tarda en liberar la conexión del canal anterior y, si la
       // línea está en su límite de conexiones, el canal nuevo
       // rebota unos segundos (429) nada más abrirlo; no es un fallo
-      // real y solo se cura esperando. La señal directa se reintenta
-      // en silencio a los 5 y a los 15 segundos del primer fallo
-      // (espaciado pedido por Sergio el 2026-11-05), antes de pasar
-      // a la señal convertida o de mostrar el aviso; la pantalla de
-      // apertura cubre la espera y no se ve ningún error.
-      if(P.kind === "live" && altUrl && !P.triedAlt && (P.liveRetries || 0) < 2){
-        if(!P.liveRetryBase) P.liveRetryBase = Date.now();
-        P.liveRetries = (P.liveRetries || 0) + 1;
-        var target = P.liveRetryBase + (P.liveRetries === 1 ? 5000 : 15000);
-        var wait = Math.max(0, target - Date.now());
-        var retrySeq = P.attachSeq;
-        setTimeout(function(){
-          if(!P.open || P.kind !== "live" || P.attachSeq !== retrySeq) return;
-          attachSource(url, altUrl);
-        }, wait);
-        return;
+      // real y solo se cura esperando. La señal principal se
+      // reintenta en silencio a los 5 y a los 15 segundos del primer
+      // fallo (espaciado pedido por Sergio el 2026-11-05), antes de
+      // pasar a la señal alternativa o de mostrar el aviso; la
+      // pantalla de apertura cubre la espera.
+      // La escalera es por TIEMPO, no por número de avisos: el
+      // vigía y los errores repetidos del reproductor llaman a
+      // onFatal muchas veces mientras el elemento guarda el error,
+      // y eso NO debe adelantar los intentos (medido en el rig: sin
+      // esta guarda la escalera se quemaba en ~5 s y saltaba a la
+      // alternativa sin esperar a la marca de los 15 s).
+      if(P.kind === "live" && altUrl && !P.triedAlt){
+        var nowL = Date.now();
+        if(!P.liveRetryBase) P.liveRetryBase = nowL;
+        var elapsed = nowL - P.liveRetryBase;
+        if(elapsed < 15000){
+          if(!P.liveRetryTimer){
+            var step = elapsed < 5000 ? 5000 : 15000;
+            var retrySeq = P.attachSeq;
+            P.liveRetryTimer = setTimeout(function(){
+              P.liveRetryTimer = null;
+              if(!P.open || P.kind !== "live" || P.attachSeq !== retrySeq) return;
+              attachSource(url, altUrl);
+            }, Math.max(0, P.liveRetryBase + step - nowL));
+          }
+          return;
+        }
       }
       if(altUrl && !P.triedAlt){
         P.triedAlt = true;
@@ -3564,7 +3581,7 @@
     if(P.watchTimer) return;
     P.watchTimer = setInterval(watchdogTick, 3000);
     var v = videoEl();
-    v.addEventListener("playing", function(){ P.playStarted = true; P.stallSince = 0; P.lastT = v.currentTime; P.liveRetries = 0; P.liveRetryBase = 0; var pe = $("player-err"); if(pe){ pe.className = "player-err"; pe.textContent = ""; } releaseVodIntro(); });
+    v.addEventListener("playing", function(){ P.playStarted = true; P.stallSince = 0; P.lastT = v.currentTime; P.liveRetries = 0; P.liveRetryBase = 0; if(P.liveRetryTimer){ clearTimeout(P.liveRetryTimer); P.liveRetryTimer = null; } var pe = $("player-err"); if(pe){ pe.className = "player-err"; pe.textContent = ""; } releaseVodIntro(); });
     document.addEventListener("visibilitychange", function(){
       if(document.hidden){
         P.wasPlayingBeforeHide = !!(P.open && !P.userPaused && !v.paused && !v.ended);
@@ -3636,9 +3653,10 @@
     P.triedAlt = false;
     P.liveRetries = 0;
     P.liveRetryBase = 0;
+    if(P.liveRetryTimer){ clearTimeout(P.liveRetryTimer); P.liveRetryTimer = null; }
     if(S.demo){ if(P.srcUrl) attachSource(P.srcUrl, null); return; }
     if(P.kind === "live" && P.channel){
-      attachSource(liveUrl(P.channel.streamId), liveRemuxUrl(P.channel.streamId));
+      attachSource(liveRemuxUrl(P.channel.streamId), liveUrl(P.channel.streamId));
     } else if(P.kind === "movie" && P.movie){
       P.resumePos = Math.floor(vodPosition());
       P.bakedSeek = false; P.seekBase = 0;
@@ -3735,8 +3753,13 @@
     showPlayerUI();
     showVodIntro();
     updateTrackButtons();
-    attachSource(S.demo ? demoChannelUrl(ch.streamId) : liveUrl(ch.streamId),
-                 S.demo ? null : liveRemuxUrl(ch.streamId));
+    // TODOS los canales por la señal CONVERTIDA (orden de Sergio,
+    // 2026-11-05): hay canales cuyo formato original el navegador no
+    // acepta aunque «en el papel» se vea bien; la convertida del
+    // puente normaliza audio y video (H.264 + AAC) y siempre entra.
+    // La directa queda como último recurso si la conversión falla.
+    attachSource(S.demo ? demoChannelUrl(ch.streamId) : liveRemuxUrl(ch.streamId),
+                 S.demo ? null : liveUrl(ch.streamId));
     loadShortEpg(ch);
   }
   function zapByNumber(num){
@@ -4159,9 +4182,13 @@
   $("account-close").addEventListener("click", closeAccountModal);
   $("modal-account").addEventListener("click", function(ev){ if(ev.target === this) closeAccountModal(); });
   // Tras una búsqueda, el «←» primero devuelve al inicio de la
-  // sección (sin salir al panel); sin búsqueda, va al panel.
+  // sección (sin salir al panel); desde «Ver por países» devuelve a
+  // la sección de TV en vivo; si no, va al panel. Es el ÚNICO botón
+  // de volver de las secciones (orden de Sergio, 2026-11-05): las
+  // sub-vistas no llevan el suyo.
   $("sec-back").addEventListener("click", function(){
     if(S.searchActive && S.backSearch){ S.backSearch(); return; }
+    if(S.section === "countries"){ openSection("live"); return; }
     goHome();
   });
   $("opt-live").addEventListener("click", function(){ openSection("live", true); });

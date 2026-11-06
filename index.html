@@ -3026,7 +3026,7 @@
     // metadatos del título NUEVO ya cargaron (P.metaReady).
     P.playSeq = (P.playSeq || 0) + 1;
     P.contentDur = 0; P.resumePos = 0; P.metaReady = false; P.isRemux = false;
-    P.userPaused = false; P.playStarted = false; P.lastT = -1; P.stallSince = 0; P.recoveries = 0;
+    P.userPaused = false; P.playStarted = false; P.lastT = -1; P.stallSince = 0; P.recoveries = 0; P.liveRetries = 0;
     $("vb-cur").textContent = "0:00"; $("vb-dur").textContent = "—";
     var rr = $("vb-range"); rr.value = 0; paintRange(rr);
     // Pistas de audio/subtítulos: cada título empieza de cero.
@@ -3450,6 +3450,23 @@
     var v = videoEl();
     if(hls){ try{ hls.destroy(); }catch(e){} hls = null; }
     function onFatal(){
+      // Cambio rápido de canal (medido 2026-11-05): el proveedor
+      // tarda en liberar la conexión del canal anterior y, si la
+      // línea está en su límite de conexiones, el canal nuevo
+      // rebota unos segundos (429) nada más abrirlo; no es un fallo
+      // real y solo se cura esperando un poco. Antes de pasar a la
+      // señal convertida o de mostrar el aviso, la señal directa se
+      // reintenta en silencio un par de veces (la pantalla de
+      // apertura cubre la espera y no se ve ningún error).
+      if(P.kind === "live" && altUrl && !P.triedAlt && (P.liveRetries || 0) < 2 && Date.now() - P.attachAt < 25000){
+        P.liveRetries = (P.liveRetries || 0) + 1;
+        var retrySeq = P.playSeq, retryAt = P.attachAt;
+        setTimeout(function(){
+          if(!P.open || P.kind !== "live" || P.playSeq !== retrySeq || P.attachAt !== retryAt) return;
+          attachSource(url, altUrl);
+        }, 2000 * P.liveRetries);
+        return;
+      }
       if(altUrl && !P.triedAlt){
         P.triedAlt = true;
         attachSource(altUrl, null);
@@ -3534,7 +3551,7 @@
     if(P.watchTimer) return;
     P.watchTimer = setInterval(watchdogTick, 3000);
     var v = videoEl();
-    v.addEventListener("playing", function(){ P.playStarted = true; P.stallSince = 0; P.lastT = v.currentTime; releaseVodIntro(); });
+    v.addEventListener("playing", function(){ P.playStarted = true; P.stallSince = 0; P.lastT = v.currentTime; P.liveRetries = 0; releaseVodIntro(); });
     document.addEventListener("visibilitychange", function(){
       if(document.hidden){
         P.wasPlayingBeforeHide = !!(P.open && !P.userPaused && !v.paused && !v.ended);
@@ -3604,6 +3621,7 @@
     if(now - (P.lastReloadAt || 0) < 12000) return;
     P.lastReloadAt = now;
     P.triedAlt = false;
+    P.liveRetries = 0;
     if(S.demo){ if(P.srcUrl) attachSource(P.srcUrl, null); return; }
     if(P.kind === "live" && P.channel){
       attachSource(liveUrl(P.channel.streamId), liveRemuxUrl(P.channel.streamId));

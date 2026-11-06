@@ -2527,7 +2527,11 @@
     if(!S.live) return [];
     var byId = {};
     S.live.master.forEach(function(ch){ byId[String(ch.streamId)] = ch; });
-    return recentsOf("live").map(function(e){ return byId[String(e.sid)]; }).filter(Boolean);
+    // Los apartados tampoco salen en «Recientes» (hueco medido el
+    // 2026-11-05: un canal visto cuando servía se quedaba en la fila
+    // para siempre aunque el monitor ya lo hubiera apartado).
+    return recentsOf("live").map(function(e){ return byId[String(e.sid)]; })
+      .filter(function(ch){ return !!ch && !isDeadChannel(ch); });
   }
   function renderLiveSection(body){
     body.innerHTML = "";
@@ -2988,6 +2992,10 @@
     body.innerHTML = '<div class="loading">Cargando…</div>';
     showView("view-section");
     var load = kind === "live" ? loadLiveData() : (kind === "movies" ? loadMoviesData() : loadSeriesData());
+    // Al (re)entrar a TV en vivo se refresca la lista de apartados:
+    // en una sesión larga, un canal puede morir después de la carga
+    // inicial y no debe seguir saliendo en la pantalla de inicio.
+    if(kind === "live" && !S.demo) fetchDeadChannels();
     load.then(function(){
       if(kind === "live") renderLiveSection(body);
       else renderVodSection(body, kind);
@@ -3765,14 +3773,20 @@
   function zapByNumber(num){
     if(!S.live) return;
     var ch = S.live.byNumber[num];
-    if(ch) playLiveChannel(ch);
+    // Un canal apartado no se abre ni marcando su número.
+    if(ch && !isDeadChannel(ch)) playLiveChannel(ch);
   }
   function zapStep(dir){
     if(!S.live || !P.channel) return;
-    var idx = S.live.master.indexOf(P.channel);
-    if(idx < 0) return;
-    var next = S.live.master[(idx + dir + S.live.master.length) % S.live.master.length];
-    if(next) playLiveChannel(next);
+    var m = S.live.master, n = m.length;
+    var idx = m.indexOf(P.channel);
+    if(idx < 0 || n === 0) return;
+    // El zapeo salta los canales apartados: recorrer la lista
+    // maestra tal cual dejaba caer en canales que ya no sirven.
+    for(var k = 1; k <= n; k++){
+      var cand = m[(((idx + dir * k) % n) + n) % n];
+      if(!isDeadChannel(cand)){ playLiveChannel(cand); return; }
+    }
   }
   function loadShortEpg(ch){
     if(S.demo) return;

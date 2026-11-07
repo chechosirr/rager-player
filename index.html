@@ -1311,23 +1311,6 @@
      puente recodifica el canal y la señal sale limpia. attachSource
      la usa sola cuando la señal directa falla. */
   function liveRemuxUrl(sid){ if(S.token) return tpath("liveremux/" + sid + ".m3u8"); return SERVER + "/liveremux/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + sid + ".m3u8"; }
-  /* Canales que ESTE aparato ya comprobó que necesitan la señal
-     convertida (su directa le falló por formato/decodificación o no
-     arrancó): se recuerdan 7 días y la próxima vez abren ya por la
-     convertida, sin repetir la espera ni el error. */
-  var REMUX_LS_KEY = "rager_remux_ids_v1";
-  function remuxLearned(sid){
-    var map = lsGet(REMUX_LS_KEY) || {};
-    var ts = map[String(sid)];
-    return !!ts && (Date.now() - ts < 7 * 24 * 3600 * 1000);
-  }
-  function remuxLearn(sid){
-    var map = lsGet(REMUX_LS_KEY) || {};
-    var now = Date.now(), cutoff = now - 7 * 24 * 3600 * 1000, k;
-    for(k in map){ if(!(map[k] > cutoff)) delete map[k]; }
-    map[String(sid)] = now;
-    lsSet(REMUX_LS_KEY, map);
-  }
   // Año de estreno desde el nombre («Título (2024)»): la lista de
   // películas del panel no trae año, pero el nombre suele llevarlo.
   function nameYear(name){
@@ -3493,24 +3476,8 @@
     // nuevo y pintar el aviso de fallo encima (reportado por Sergio
     // el 2026-11-05: «me volvió a tirar la señal del primer canal»).
     var mySeq = P.attachSeq = (P.attachSeq || 0) + 1;
-    function onFatal(forceAlt){
+    function onFatal(){
       if(P.attachSeq !== mySeq) return;
-      // Señal directa rechazada por FORMATO (error 3 de
-      // decodificación o 4 de fuente no soportada, o error de medio
-      // de la librería) o arranque que nunca llegó (forceAlt del
-      // vigía): reintentar la misma señal no lo arregla. Se pasa a
-      // la alternativa — la convertida — AL INSTANTE y el canal
-      // queda aprendido en este aparato.
-      if(P.kind === "live" && altUrl && !P.triedAlt && altUrl.indexOf("/liveremux/") >= 0){
-        var ecode = 0;
-        try{ if(v.error) ecode = v.error.code || 0; }catch(e){}
-        if(forceAlt || ecode === 3 || ecode === 4){
-          P.triedAlt = true;
-          if(P.channel) remuxLearn(P.channel.streamId);
-          attachSource(altUrl, null);
-          return;
-        }
-      }
       // Cambio rápido de canal (medido 2026-11-05): el proveedor
       // tarda en liberar la conexión del canal anterior y, si la
       // línea está en su límite de conexiones, el canal nuevo
@@ -3545,9 +3512,6 @@
       }
       if(altUrl && !P.triedAlt){
         P.triedAlt = true;
-        // Si la alternativa es la convertida, el canal queda
-        // aprendido: su directa no le sirvió a este aparato.
-        if(P.kind === "live" && altUrl.indexOf("/liveremux/") >= 0 && P.channel) remuxLearn(P.channel.streamId);
         attachSource(altUrl, null);
         return;
       }
@@ -3590,7 +3554,7 @@
       hls.loadSource(url);
       hls.attachMedia(v);
       hls.on(Hls.Events.MANIFEST_PARSED, function(){ tryResume(); P.metaReady = true; updateVodBar(); v.play().catch(function(){}); });
-      hls.on(Hls.Events.ERROR, function(ev, data){ if(data && data.fatal) onFatal(data.type === Hls.ErrorTypes.MEDIA_ERROR); });
+      hls.on(Hls.Events.ERROR, function(ev, data){ if(data && data.fatal) onFatal(); });
     } else if(isHls && !(v.canPlayType("application/vnd.apple.mpegurl")) && !(window.Hls && Hls.isSupported())){
       // Ni HLS nativo ni la librería hls.js (que va incluida en la
       // propia página): sin ninguno de los dos no hay forma de
@@ -3664,9 +3628,7 @@
     if(P.kind === "live" && P.open && !P.triedAlt && P.onFatal){
       if(v.error){ var f1 = P.onFatal; P.onFatal = null; f1(); return; }
       if(!P.playStarted && P.attachAt && Date.now() - P.attachAt > 15000){
-        // La principal (la directa) nunca arrancó: salto directo a
-        // la alternativa (la convertida), sin escalera de reintentos.
-        var f2 = P.onFatal; P.onFatal = null; f2(true); return;
+        var f2 = P.onFatal; P.onFatal = null; f2(); return;
       }
     }
     if(P.userPaused || P.vbScrubbing || v.ended || v.error){ P.stallSince = 0; P.lastT = v.currentTime; return; }
@@ -3701,19 +3663,13 @@
     var now = Date.now();
     if(now - (P.lastReloadAt || 0) < 12000) return;
     P.lastReloadAt = now;
-    var wasAlt = P.triedAlt;
     P.triedAlt = false;
     P.liveRetries = 0;
     P.liveRetryBase = 0;
     if(P.liveRetryTimer){ clearTimeout(P.liveRetryTimer); P.liveRetryTimer = null; }
     if(S.demo){ if(P.srcUrl) attachSource(P.srcUrl, null); return; }
     if(P.kind === "live" && P.channel){
-      // Se recarga LA MISMA vía que estaba sonando: si el canal ya
-      // había caído a la convertida, se recarga la convertida; si
-      // iba por la directa, se recarga la directa con la convertida
-      // de respaldo.
-      if(wasAlt) attachSource(liveRemuxUrl(P.channel.streamId), liveUrl(P.channel.streamId));
-      else attachSource(liveUrl(P.channel.streamId), liveRemuxUrl(P.channel.streamId));
+      attachSource(liveRemuxUrl(P.channel.streamId), liveUrl(P.channel.streamId));
     } else if(P.kind === "movie" && P.movie){
       P.resumePos = Math.floor(vodPosition());
       P.bakedSeek = false; P.seekBase = 0;
@@ -3810,18 +3766,13 @@
     showPlayerUI();
     showVodIntro();
     updateTrackButtons();
-    // SOLO SE CONVIERTE EL QUE LO NECESITA (decisión de Sergio,
-    // 2026-11-07; revierte «todos convertidos» del 5-nov): el canal
-    // abre por su señal DIRECTA, sin el retraso ni el techo de 720p
-    // de la conversión, y la convertida del puente queda como
-    // respaldo real: si este navegador rechaza la directa por
-    // formato o no arranca, attachSource salta solo a la convertida
-    // y el canal queda APRENDIDO en este aparato (la próxima vez
-    // abre ya por la convertida). Los ya aprendidos abren directos
-    // por la convertida, con la directa de último recurso.
-    var aprendido = !S.demo && remuxLearned(ch.streamId);
-    attachSource(S.demo ? demoChannelUrl(ch.streamId) : (aprendido ? liveRemuxUrl(ch.streamId) : liveUrl(ch.streamId)),
-                 S.demo ? null : (aprendido ? liveUrl(ch.streamId) : liveRemuxUrl(ch.streamId)));
+    // TODOS los canales por la señal CONVERTIDA (orden de Sergio,
+    // 2026-11-05): hay canales cuyo formato original el navegador no
+    // acepta aunque «en el papel» se vea bien; la convertida del
+    // puente normaliza audio y video (H.264 + AAC) y siempre entra.
+    // La directa queda como último recurso si la conversión falla.
+    attachSource(S.demo ? demoChannelUrl(ch.streamId) : liveRemuxUrl(ch.streamId),
+                 S.demo ? null : liveUrl(ch.streamId));
     loadShortEpg(ch);
   }
   function zapByNumber(num){
@@ -4631,6 +4582,7 @@ body.rg-gated>#rg-chat.rgc-hidden{display:none!important}
 .rgc-gate button{background:#e0342f;color:#fff;border:0;border-radius:10px;padding:12px 16px;font-weight:800;cursor:pointer;font-size:15px}
 .rgc-finbar{display:flex;padding:10px 12px;border-top:1px solid #26262f}
 .rgc-finbar button{flex:1;background:transparent;color:#ff9c9c;border:1px solid rgba(255,156,156,.45);border-radius:10px;padding:10px;font-weight:700;cursor:pointer;font-size:14px;font-family:inherit}
+#rgc-again{color:#7db3f0;border-color:rgba(125,179,240,.55)}
 .rgc-closed{padding:22px 16px;text-align:center;border-top:1px solid #26262f}
 .rgc-closed b{font-size:16.5px}
 .rgc-closed p{color:#b9b9c4;font-size:13.5px;margin:8px 0 14px}

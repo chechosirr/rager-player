@@ -515,10 +515,10 @@
       <p style="color:#c7cfdd;font-size:14px;margin:0 0 10px">Te enviamos un enlace a tu correo para crear una contraseña nueva (caduca en 1 hora). Usa el mismo correo de tu cuenta, el que escribiste arriba.</p>
       <button id="btn-olvide" class="btn-main" type="button">Solicitar enlace</button>
       <div id="ov-msg" class="msg"></div>
-      <p style="color:#9aa3b2;font-size:13px;margin:10px 0 0">¿Sin acceso a tu correo? Pídelo por el <a href="#" class="rg-chat-open" style="color:#c7cfdd">chat de Ayuda</a> y te lo restablecemos desde el panel.</p>
+      <p style="color:#9aa3b2;font-size:13px;margin:10px 0 0">¿Sin acceso a tu correo? Pídelo por el <a href="#" class="rg-chat-open rg-chat-ayuda" style="color:#c7cfdd">chat de Ayuda</a> y te lo restablecemos desde el panel.</p>
     </div>
     <button id="btn-demo" class="btn-demo" type="button">¿No tienes cuenta? Créala.</button>
-    <button id="btn-help-login" class="btn-demo rg-chat-open" type="button">Ayuda</button>
+    <button id="btn-help-login" class="btn-demo rg-chat-open rg-chat-ayuda" type="button">Ayuda</button>
     <div id="login-msg" class="msg"></div>
     <div id="sub-prompt" class="sub-prompt hidden">
       <div class="sub-prompt-title">Necesitas una suscripción para entrar</div>
@@ -729,7 +729,7 @@
   <button id="pm-switch" class="pmenu-item" type="button" role="menuitem">Cambiar de usuario</button>
   <button id="pm-account" class="pmenu-item" type="button" role="menuitem">Mi cuenta</button>
   <button id="pm-support" class="pmenu-item" type="button" role="menuitem">Contactar a soporte</button>
-  <button id="pm-help" class="pmenu-item rg-chat-open" type="button" role="menuitem">Ayuda</button>
+  <button id="pm-help" class="pmenu-item rg-chat-open rg-chat-ayuda" type="button" role="menuitem">Ayuda</button>
   <button id="pm-hist" class="pmenu-item rg-chat-hist" type="button" role="menuitem">Mis chats</button>
   <button id="pm-panel" class="pmenu-item hidden" type="button" role="menuitem">Panel</button>
   <button id="pm-chat" class="pmenu-item hidden" type="button" role="menuitem">Chat</button>
@@ -1311,23 +1311,6 @@
      puente recodifica el canal y la señal sale limpia. attachSource
      la usa sola cuando la señal directa falla. */
   function liveRemuxUrl(sid){ if(S.token) return tpath("liveremux/" + sid + ".m3u8"); return SERVER + "/liveremux/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + sid + ".m3u8"; }
-  /* Canales que ESTE aparato ya comprobó que necesitan la señal
-     convertida (su directa le falló por formato/decodificación o no
-     arrancó): se recuerdan 7 días y la próxima vez abren ya por la
-     convertida, sin repetir la espera ni el error. */
-  var REMUX_LS_KEY = "rager_remux_ids_v1";
-  function remuxLearned(sid){
-    var map = lsGet(REMUX_LS_KEY) || {};
-    var ts = map[String(sid)];
-    return !!ts && (Date.now() - ts < 7 * 24 * 3600 * 1000);
-  }
-  function remuxLearn(sid){
-    var map = lsGet(REMUX_LS_KEY) || {};
-    var now = Date.now(), cutoff = now - 7 * 24 * 3600 * 1000, k;
-    for(k in map){ if(!(map[k] > cutoff)) delete map[k]; }
-    map[String(sid)] = now;
-    lsSet(REMUX_LS_KEY, map);
-  }
   // Año de estreno desde el nombre («Título (2024)»): la lista de
   // películas del panel no trae año, pero el nombre suele llevarlo.
   function nameYear(name){
@@ -1365,20 +1348,6 @@
       P.seekBase = Math.floor(P.resumePos);
       u += "&ss=" + P.seekBase;
     }
-    return u;
-  }
-  /* La MISMA película/episodio por la conversión del puente, se
-     haya abierto por donde se haya abierto: es la vía alternativa
-     de las películas y series (si la directa falla tras sus
-     reintentos, se intenta la conversión antes de dar el aviso). */
-  function vodRemuxUrl(kind, id, ext){
-    var e = (ext || "mp4").toLowerCase();
-    var u = S.token ? tpath("remux/" + kind + "/" + id + ".m3u8?ext=" + e)
-            : SERVER + "/remux/" + kind + "/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) +
-              "/" + id + ".m3u8?ext=" + e;
-    if(P.audioSel != null && P.audioSel >= 0) u += "&atrack=" + P.audioSel;
-    var pos = P.bakedSeek ? P.seekBase : (P.resumePos && P.resumePos > 5 ? Math.floor(P.resumePos) : 0);
-    if(pos > 5) u += "&ss=" + pos;
     return u;
   }
   function movieUrl(id, ext){ if(S.token) return tpath("movie/" + id + "." + (ext || "mp4")); return SERVER + "/movie/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + id + "." + (ext || "mp4"); }
@@ -3077,7 +3046,6 @@
     P.playSeq = (P.playSeq || 0) + 1;
     P.contentDur = 0; P.resumePos = 0; P.metaReady = false; P.isRemux = false;
     P.userPaused = false; P.playStarted = false; P.lastT = -1; P.stallSince = 0; P.recoveries = 0; P.liveRetries = 0; P.liveRetryBase = 0; if(P.liveRetryTimer){ clearTimeout(P.liveRetryTimer); P.liveRetryTimer = null; }
-    P.lastRetryUrl = null; P.lastRetryBase = 0; if(P.lastRetryTimer){ clearTimeout(P.lastRetryTimer); P.lastRetryTimer = null; }
     $("vb-cur").textContent = "0:00"; $("vb-dur").textContent = "—";
     var rr = $("vb-range"); rr.value = 0; paintRange(rr);
     // Pistas de audio/subtítulos: cada título empieza de cero.
@@ -3508,61 +3476,8 @@
     // nuevo y pintar el aviso de fallo encima (reportado por Sergio
     // el 2026-11-05: «me volvió a tirar la señal del primer canal»).
     var mySeq = P.attachSeq = (P.attachSeq || 0) + 1;
-    /* Reintentos de ESTA vía a los 5 y 15 s del primer fallo (por
-       tiempo, como la escalera de los canales): el aviso de error
-       solo puede salir cuando la vía ya se reintentó en sus dos
-       marcas. Devuelve true si programó un reintento (el fallo
-       queda «en curso», sin aviso). La cuenta es por URL: al pasar
-       a otra vía empieza su propia cuenta. */
-    function routeRetry(){
-      var now = Date.now();
-      if(P.lastRetryUrl !== url){ P.lastRetryUrl = url; P.lastRetryBase = now; }
-      var el = now - P.lastRetryBase;
-      if(el >= 15000) return false;
-      if(!P.lastRetryTimer){
-        var step = el < 5000 ? 5000 : 15000;
-        var seq = P.attachSeq;
-        P.lastRetryTimer = setTimeout(function(){
-          P.lastRetryTimer = null;
-          if(!P.open || P.attachSeq !== seq) return;
-          attachSource(url, altUrl);
-        }, Math.max(0, P.lastRetryBase + step - now));
-      }
-      return true;
-    }
-    function onFatal(forceAlt){
+    function onFatal(){
       if(P.attachSeq !== mySeq) return;
-      // Señal directa rechazada por FORMATO (error 3 de
-      // decodificación o 4 de fuente no soportada, o error de medio
-      // de la librería) o arranque que nunca llegó (forceAlt del
-      // vigía): reintentar la misma señal no lo arregla. Se pasa a
-      // la alternativa — la convertida — AL INSTANTE y el canal
-      // queda aprendido en este aparato.
-      // OJO: el código se lee de P.srcErrCode, capturado en el
-      // momento del error por el oyente del elemento — leer v.error
-      // aquí daba el 4 VIEJO que deja la limpieza del título
-      // anterior (stopPlayer quita el src y el elemento guarda
-      // «fuente no soportada»), y un rebote de red pasajero se
-      // trataba como rechazo de formato (medido en el rig: la
-      // convertida se pedía al mismo segundo que la directa daba
-      // 429, sin escalera).
-      if(P.kind === "live" && altUrl && !P.triedAlt && altUrl.indexOf("/liveremux/") >= 0){
-        // Ni siquiera el 4 basta solo: en la ruta nativa (Safari),
-        // una lista que el servidor RECHAZA (429/404/502) también
-        // produce error 4 — pero el elemento queda «sin fuente»
-        // (networkState 3, nunca llegó nada). Si la señal llegó y
-        // fue rechazada al decodificar, el elemento sí tuvo fuente.
-        // Sin fuente = fallo de carga: manda la escalera de
-        // reintentos, no el salto por formato.
-        var netNS = 0;
-        try{ netNS = v.networkState || 0; }catch(e){}
-        if(forceAlt === true || P.srcErrCode === 3 || (P.srcErrCode === 4 && netNS !== 3)){
-          P.triedAlt = true;
-          if(P.channel) remuxLearn(P.channel.streamId);
-          attachSource(altUrl, null);
-          return;
-        }
-      }
       // Cambio rápido de canal (medido 2026-11-05): el proveedor
       // tarda en liberar la conexión del canal anterior y, si la
       // línea está en su límite de conexiones, el canal nuevo
@@ -3595,42 +3510,10 @@
           return;
         }
       }
-      // Películas y series (orden de Sergio, 2026-11-07): el aviso
-      // no sale antes de tiempo. Primero se reintenta ESTA vía a
-      // los 5 y 15 s; solo entonces se pasa a la otra vía (la
-      // conversión, si se abrió directa; y si se abrió por la
-      // conversión, su propia escalera corre en el paso final).
-      if((P.kind === "movie" || P.kind === "episode") && altUrl && !P.triedAlt){
-        // Sin atajos: en el archivo directo, un 429/404 del servidor
-        // y un formato rechazado comparten el mismo código de error
-        // (4), así que no se puede distinguir el rebote pasajero
-        // del rechazo real. Manda la orden de Sergio: primero los
-        // reintentos de esta vía, después la otra.
-        if(routeRetry()) return;
-      }
       if(altUrl && !P.triedAlt){
         P.triedAlt = true;
-        // Si la alternativa es la convertida, el canal queda
-        // aprendido: su directa no le sirvió a este aparato.
-        if(P.kind === "live" && altUrl.indexOf("/liveremux/") >= 0 && P.channel) remuxLearn(P.channel.streamId);
-        // Al caer a la conversión de una película/serie, se adopta
-        // su punto de arranque (ss=) como base de posición, igual
-        // que cuando la conversión es la vía principal.
-        if((P.kind === "movie" || P.kind === "episode") && altUrl.indexOf("/remux/") >= 0){
-          var mss = /[?&]ss=(\d+)/.exec(altUrl);
-          P.bakedSeek = true;
-          P.seekBase = mss ? parseInt(mss[1], 10) : 0;
-        }
         attachSource(altUrl, null);
         return;
-      }
-      // Última vía en pie: también tiene derecho a sus reintentos
-      // de 5 y 15 s antes de rendirse (la convertida de un canal o
-      // la ruta que quede de una película/serie pueden fallar por
-      // un rebote pasajero del proveedor o por la propia arrancada
-      // de la conversión). Solo agotados sale el aviso.
-      if(P.kind === "live" || P.kind === "movie" || P.kind === "episode"){
-        if(routeRetry()) return;
       }
       // Diagnóstico (2026-11-04): se añade el código de error real del
       // navegador al aviso, para saber POR QUÉ rechaza la señal en vez
@@ -3646,7 +3529,6 @@
     }
     P.onFatal = onFatal;
     P.srcUrl = url;
-    P.srcErrCode = 0;
     P.attachAt = Date.now();
     var isHls = /\.m3u8($|\?)/i.test(url);
     var isRemux = url.indexOf("/remux/") >= 0;
@@ -3672,7 +3554,7 @@
       hls.loadSource(url);
       hls.attachMedia(v);
       hls.on(Hls.Events.MANIFEST_PARSED, function(){ tryResume(); P.metaReady = true; updateVodBar(); v.play().catch(function(){}); });
-      hls.on(Hls.Events.ERROR, function(ev, data){ if(data && data.fatal) onFatal(data.type === Hls.ErrorTypes.MEDIA_ERROR); });
+      hls.on(Hls.Events.ERROR, function(ev, data){ if(data && data.fatal) onFatal(); });
     } else if(isHls && !(v.canPlayType("application/vnd.apple.mpegurl")) && !(window.Hls && Hls.isSupported())){
       // Ni HLS nativo ni la librería hls.js (que va incluida en la
       // propia página): sin ninguno de los dos no hay forma de
@@ -3681,7 +3563,7 @@
     } else if(isHls || isRemux || v.canPlayType("application/vnd.apple.mpegurl") || /\.(mp4|m4v|mov|webm)($|\?)/i.test(url)){
       v.src = url;
       v.addEventListener("loadedmetadata", function(){ tryResume(); P.metaReady = true; updateVodBar(); }, { once: true });
-      v.addEventListener("error", function(){ try{ P.srcErrCode = v.error ? (v.error.code || 0) : 0; }catch(e){} onFatal(); }, { once: true });
+      v.addEventListener("error", function(){ onFatal(); }, { once: true });
       v.play().catch(function(){});
     } else {
       playerFail("Tu navegador no puede reproducir este formato de video. Prueba con un navegador actualizado (Chrome, Edge, Firefox o Safari).");
@@ -3712,7 +3594,7 @@
     if(P.watchTimer) return;
     P.watchTimer = setInterval(watchdogTick, 3000);
     var v = videoEl();
-    v.addEventListener("playing", function(){ P.playStarted = true; P.stallSince = 0; P.lastT = v.currentTime; P.liveRetries = 0; P.liveRetryBase = 0; if(P.liveRetryTimer){ clearTimeout(P.liveRetryTimer); P.liveRetryTimer = null; } P.lastRetryUrl = null; P.lastRetryBase = 0; if(P.lastRetryTimer){ clearTimeout(P.lastRetryTimer); P.lastRetryTimer = null; } var pe = $("player-err"); if(pe){ pe.className = "player-err"; pe.textContent = ""; } releaseVodIntro(); });
+    v.addEventListener("playing", function(){ P.playStarted = true; P.stallSince = 0; P.lastT = v.currentTime; P.liveRetries = 0; P.liveRetryBase = 0; if(P.liveRetryTimer){ clearTimeout(P.liveRetryTimer); P.liveRetryTimer = null; } var pe = $("player-err"); if(pe){ pe.className = "player-err"; pe.textContent = ""; } releaseVodIntro(); });
     document.addEventListener("visibilitychange", function(){
       if(document.hidden){
         P.wasPlayingBeforeHide = !!(P.open && !P.userPaused && !v.paused && !v.ended);
@@ -3746,21 +3628,7 @@
     if(P.kind === "live" && P.open && !P.triedAlt && P.onFatal){
       if(v.error){ var f1 = P.onFatal; P.onFatal = null; f1(); return; }
       if(!P.playStarted && P.attachAt && Date.now() - P.attachAt > 15000){
-        // La principal (la directa) nunca arrancó: salto directo a
-        // la alternativa (la convertida), sin escalera de reintentos.
-        var f2 = P.onFatal; P.onFatal = null; f2(true); return;
-      }
-    }
-    /* Películas y series que nunca arrancan y tampoco dan error
-       (conversión que no despega, señal colgada): a los 30 s sin
-       empezar, el vigía entra por la vía de error normal, que
-       reintenta la vía y pasa a la otra antes de mostrar el aviso.
-       Sin esto, ese título se quedaba en la pantalla de apertura
-       para siempre. */
-    if((P.kind === "movie" || P.kind === "episode") && P.open && P.onFatal && !P.playStarted){
-      if(v.error){ var f4 = P.onFatal; P.onFatal = null; f4(); return; }
-      if(!P.playStarted && P.attachAt && Date.now() - P.attachAt > 30000){
-        var f3 = P.onFatal; P.onFatal = null; f3(); return;
+        var f2 = P.onFatal; P.onFatal = null; f2(); return;
       }
     }
     if(P.userPaused || P.vbScrubbing || v.ended || v.error){ P.stallSince = 0; P.lastT = v.currentTime; return; }
@@ -3795,43 +3663,21 @@
     var now = Date.now();
     if(now - (P.lastReloadAt || 0) < 12000) return;
     P.lastReloadAt = now;
-    var wasAlt = P.triedAlt;
     P.triedAlt = false;
     P.liveRetries = 0;
     P.liveRetryBase = 0;
     if(P.liveRetryTimer){ clearTimeout(P.liveRetryTimer); P.liveRetryTimer = null; }
     if(S.demo){ if(P.srcUrl) attachSource(P.srcUrl, null); return; }
     if(P.kind === "live" && P.channel){
-      // Se recarga LA MISMA vía que estaba sonando: si el canal ya
-      // había caído a la convertida, se recarga la convertida; si
-      // iba por la directa, se recarga la directa con la convertida
-      // de respaldo.
-      if(wasAlt) attachSource(liveRemuxUrl(P.channel.streamId), liveUrl(P.channel.streamId));
-      else attachSource(liveUrl(P.channel.streamId), liveRemuxUrl(P.channel.streamId));
+      attachSource(liveRemuxUrl(P.channel.streamId), liveUrl(P.channel.streamId));
     } else if(P.kind === "movie" && P.movie){
       P.resumePos = Math.floor(vodPosition());
-      // Misma regla que en vivo: se recarga la vía que estaba
-      // sonando (si ya había caído a la conversión, la conversión,
-      // retomando en el punto actual); si no, la principal con su
-      // alternativa.
-      if(wasAlt){
-        P.bakedSeek = true; P.seekBase = P.resumePos > 5 ? Math.floor(P.resumePos) : 0;
-        attachSource(vodRemuxUrl("movie", P.movie.streamId, P.movie.extension), null);
-      } else {
-        P.bakedSeek = false; P.seekBase = 0;
-        var um = vodUrl("movie", P.movie.streamId, P.movie.extension);
-        attachSource(um, um.indexOf("/remux/") < 0 ? vodRemuxUrl("movie", P.movie.streamId, P.movie.extension) : null);
-      }
+      P.bakedSeek = false; P.seekBase = 0;
+      attachSource(vodUrl("movie", P.movie.streamId, P.movie.extension), null);
     } else if(P.kind === "episode" && P.episode){
       P.resumePos = Math.floor(vodPosition());
-      if(wasAlt){
-        P.bakedSeek = true; P.seekBase = P.resumePos > 5 ? Math.floor(P.resumePos) : 0;
-        attachSource(vodRemuxUrl("series", P.episode.id, P.episode.extension), null);
-      } else {
-        P.bakedSeek = false; P.seekBase = 0;
-        var ue = vodUrl("series", P.episode.id, P.episode.extension);
-        attachSource(ue, ue.indexOf("/remux/") < 0 ? vodRemuxUrl("series", P.episode.id, P.episode.extension) : null);
-      }
+      P.bakedSeek = false; P.seekBase = 0;
+      attachSource(vodUrl("series", P.episode.id, P.episode.extension), null);
     }
   }
   /* Barra propia de VOD: se muestra al tocar la pantalla y se oculta sola
@@ -3920,18 +3766,13 @@
     showPlayerUI();
     showVodIntro();
     updateTrackButtons();
-    // SOLO SE CONVIERTE EL QUE LO NECESITA (decisión de Sergio,
-    // 2026-11-07; revierte «todos convertidos» del 5-nov): el canal
-    // abre por su señal DIRECTA, sin el retraso ni el techo de 720p
-    // de la conversión, y la convertida del puente queda como
-    // respaldo real: si este navegador rechaza la directa por
-    // formato o no arranca, attachSource salta solo a la convertida
-    // y el canal queda APRENDIDO en este aparato (la próxima vez
-    // abre ya por la convertida). Los ya aprendidos abren directos
-    // por la convertida, con la directa de último recurso.
-    var aprendido = !S.demo && remuxLearned(ch.streamId);
-    attachSource(S.demo ? demoChannelUrl(ch.streamId) : (aprendido ? liveRemuxUrl(ch.streamId) : liveUrl(ch.streamId)),
-                 S.demo ? null : (aprendido ? liveUrl(ch.streamId) : liveRemuxUrl(ch.streamId)));
+    // TODOS los canales por la señal CONVERTIDA (orden de Sergio,
+    // 2026-11-05): hay canales cuyo formato original el navegador no
+    // acepta aunque «en el papel» se vea bien; la convertida del
+    // puente normaliza audio y video (H.264 + AAC) y siempre entra.
+    // La directa queda como último recurso si la conversión falla.
+    attachSource(S.demo ? demoChannelUrl(ch.streamId) : liveRemuxUrl(ch.streamId),
+                 S.demo ? null : liveUrl(ch.streamId));
     loadShortEpg(ch);
   }
   function zapByNumber(num){
@@ -4060,11 +3901,6 @@
     var url, alt = null;
     if(S.demo){ url = demoPlayUrl(m.streamId); }
     else { url = vodUrl("movie", m.streamId, m.extension); }
-    // Si la película abrió por el archivo directo, su otra vía es
-    // la conversión del puente: queda de alternativa real y solo se
-    // usa cuando la directa agota sus reintentos (o su formato es
-    // rechazado). Si ya abrió por la conversión, no hay más vías.
-    if(!S.demo && url.indexOf("/remux/") < 0) alt = vodRemuxUrl("movie", m.streamId, m.extension);
     updateTrackButtons();
     attachSource(url, alt);
     if(!S.demo){ fetchMovieDuration(m.streamId); fetchTitleMeta("movie", m.streamId, m.extension); }
@@ -4092,9 +3928,6 @@
     var url, alt = null;
     if(S.demo){ url = demoPlayUrl(isNaN(epNumId) ? 0 : epNumId); }
     else { url = vodUrl("series", ep.id, ep.extension); }
-    // Igual que en películas: si el episodio abrió directo, la
-    // conversión del puente queda como su otra vía.
-    if(!S.demo && url.indexOf("/remux/") < 0) alt = vodRemuxUrl("series", ep.id, ep.extension);
     updateTrackButtons();
     attachSource(url, alt);
     if(!S.demo) fetchTitleMeta("series", ep.id, ep.extension);
@@ -4764,6 +4597,11 @@ body.rg-gated>#rg-chat.rgc-hidden{display:none!important}
 .rgc-viewbar{display:flex;align-items:center;gap:8px;padding:8px 14px;background:#16161b;border-bottom:1px solid #26262f;font-size:12.5px;color:#b9b9c4}
 .rgc-viewbar button{margin-left:auto;background:transparent;color:#f2f2f5;border:1px solid #33333f;border-radius:8px;padding:6px 10px;font-family:inherit;font-weight:700;font-size:12.5px;cursor:pointer}
 .rgc-finbar.rgc-hidden,.rgc-closed.rgc-hidden,.rgc-hist.rgc-hidden,.rgc-viewbar.rgc-hidden{display:none!important}
+.rgc-lobby{padding:22px 16px;text-align:center;border-top:1px solid #26262f}
+.rgc-lobby p{color:#d7d7de;font-size:15px;line-height:1.5;margin:0 0 16px}
+.rgc-lobby button{background:transparent;color:#7db3f0;border:1px solid rgba(125,179,240,.55);border-radius:10px;padding:11px 18px;font-weight:700;cursor:pointer;font-size:15px;font-family:inherit;width:100%}
+.rgc-lobby.rgc-hidden{display:none!important}
+.rgc-histnew{margin-top:auto;background:transparent;color:#7db3f0;border:1px solid rgba(125,179,240,.55);border-radius:10px;padding:10px;font-weight:700;cursor:pointer;font-size:14px;font-family:inherit;width:100%}
 #rg-welcome{position:fixed;inset:0;z-index:3000;background:#0c0c10;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 #rg-welcome.rgc-hidden{display:none!important}
 body.rg-gated>#rg-welcome{display:flex!important}
@@ -4775,6 +4613,10 @@ body.rg-gated>#rg-welcome.rgc-hidden{display:none!important}
   <div class="rgc-box">
     <div class="rgc-head"><span>Ayuda · Rager</span><button id="rgc-close" type="button" aria-label="Cerrar chat">×</button></div>
     <p class="rgc-note">Escríbenos y te respondemos por aquí.</p>
+    <div id="rgc-lobby" class="rgc-lobby rgc-hidden">
+      <p>Para hablar con nosotros, toca el botón <b>«Iniciar un chat nuevo»</b>: ahí se abre tu conversación y te respondemos por aquí.</p>
+      <button id="rgc-lobbynew" type="button">Iniciar un chat nuevo</button>
+    </div>
     <div id="rgc-gate" class="rgc-gate">
       <label>¿Cómo te llamas?<input id="rgc-name" type="text" placeholder="Tu nombre" autocomplete="name"></label>
       <label>Contacto <span>(opcional: WhatsApp o correo)</span><input id="rgc-contact" type="text" placeholder="Opcional" autocomplete="email"></label>
@@ -4789,7 +4631,7 @@ body.rg-gated>#rg-welcome.rgc-hidden{display:none!important}
     <div id="rgc-finbar" class="rgc-finbar rgc-hidden"><button id="rgc-fin" type="button">Finalizar chat</button></div>
     <div id="rgc-closed" class="rgc-closed rgc-hidden"><b>Chat finalizado. Gracias por escribirnos.</b><p>Si necesitas algo más, puedes empezar un chat nuevo.</p></div>
     <div id="rgc-againbar" class="rgc-finbar rgc-hidden"><button id="rgc-again" type="button">Iniciar un chat nuevo</button></div>
-    <div id="rgc-hist" class="rgc-hist rgc-hidden"><button class="rgc-back" id="rgc-histback" type="button">← Volver al chat</button><div id="rgc-histlist"></div></div>
+    <div id="rgc-hist" class="rgc-hist rgc-hidden"><button class="rgc-back" id="rgc-histback" type="button">← Volver al chat</button><div id="rgc-histlist"></div><button class="rgc-histnew" id="rgc-histnew" type="button">Iniciar un chat nuevo</button></div>
   </div>
 </div>
 <script>
@@ -4813,7 +4655,7 @@ var acctConv = ls("rager_chat_conv_acc") || "";
 var convIds = []; try{ convIds = JSON.parse(ls("rager_chat_convs") || "[]") || []; }catch(e){ convIds = []; }
 function noteConv(id){ if(!id) return; if(convIds.indexOf(id) < 0){ convIds.push(id); if(convIds.length > 30) convIds = convIds.slice(-30); lsSet("rager_chat_convs", JSON.stringify(convIds)); } }
 if(conv) noteConv(conv); if(acctConv) noteConv(acctConv);
-var finalizada = false, viewing = null, histOpen = false;
+var finalizada = false, viewing = null, histOpen = false, lobby = false;
 function siteToken(){
   var t = ls("rager_site_token") || "";
   if(t) return t;
@@ -4847,7 +4689,19 @@ function poll(reset){
    pantalla de datos del visitante y, al enviarlos, el chat normal. */
 function syncGate(){
   var gate = $("rgc-gate"), msgs = $("rgc-msgs"), form = $("rgc-form");
+  var lb = $("rgc-lobby"); if(lb) lb.classList.toggle("rgc-hidden", !lobby);
   var started = !!myName || !!acct;
+  if(lobby){
+    if(gate) gate.classList.add("rgc-hidden");
+    if(msgs) msgs.classList.add("rgc-hidden");
+    if(form) form.classList.add("rgc-hidden");
+    var fb0 = $("rgc-finbar"); if(fb0) fb0.classList.add("rgc-hidden");
+    var cl0 = $("rgc-closed"); if(cl0) cl0.classList.add("rgc-hidden");
+    var ab0 = $("rgc-againbar"); if(ab0) ab0.classList.add("rgc-hidden");
+    var vb0 = $("rgc-viewbar"); if(vb0) vb0.classList.add("rgc-hidden");
+    var hs0 = $("rgc-hist"); if(hs0) hs0.classList.add("rgc-hidden");
+    return;
+  }
   if(gate) gate.classList.toggle("rgc-hidden", started || histOpen || !!viewing);
   if(msgs) msgs.classList.toggle("rgc-hidden", !started || histOpen);
   if(form) form.classList.toggle("rgc-hidden", !started || finalizada || histOpen || !!viewing);
@@ -4881,11 +4735,31 @@ function ensureOpen(){
 function openChat(){
   var c = $("rg-chat"); if(!c) return;
   c.classList.remove("rgc-hidden");
-  histOpen = false; viewing = null;
+  histOpen = false; viewing = null; lobby = false;
   syncGate();
   if(activeConv()) poll(true); else ensureOpen();
   if(timer) clearInterval(timer);
   timer = setInterval(function(){ if(activeConv()) poll(false); else ensureOpen(); }, 4000);
+  var f = (myName || acct) ? $("rgc-input") : $("rgc-name");
+  if(f) setTimeout(function(){ try{ f.focus(); }catch(e){} }, 60);
+}
+/* Entrada «Ayuda» (orden de Sergio): picar Ayuda NO crea ningún
+   chat; primero se enseña este vestíbulo y la conversación solo
+   se crea o se abre cuando el cliente toca «Iniciar un chat
+   nuevo». Las demás entradas al chat no pasan por aquí. */
+function openLobby(){
+  var c = $("rg-chat"); if(!c) return;
+  c.classList.remove("rgc-hidden");
+  histOpen = false; viewing = null; lobby = true;
+  syncGate();
+  if(timer) clearInterval(timer);
+  timer = setInterval(function(){ if(lobby) return; if(activeConv()) poll(false); else ensureOpen(); }, 4000);
+  var b = $("rgc-lobbynew"); if(b) setTimeout(function(){ try{ b.focus(); }catch(e){} }, 60);
+}
+function lobbyStart(){
+  lobby = false;
+  syncGate();
+  if(activeConv()){ seen = 0; poll(true); } else ensureOpen();
   var f = (myName || acct) ? $("rgc-input") : $("rgc-name");
   if(f) setTimeout(function(){ try{ f.focus(); }catch(e){} }, 60);
 }
@@ -4933,7 +4807,7 @@ function loadHist(){
 function openHistory(){
   var c = $("rg-chat"); if(!c) return;
   c.classList.remove("rgc-hidden");
-  histOpen = true; viewing = null;
+  histOpen = true; viewing = null; lobby = false;
   syncGate(); loadHist();
   if(timer) clearInterval(timer);
   timer = setInterval(function(){ if(activeConv() && !viewing) poll(false); else ensureOpen(); }, 4000);
@@ -4958,6 +4832,8 @@ function openHistItem(it){
 window.RagerChatHistory = openHistory;
 var finB = $("rgc-fin"); if(finB) finB.addEventListener("click", doFinalizar);
 var agB = $("rgc-again"); if(agB) agB.addEventListener("click", newChat);
+var lnB = $("rgc-lobbynew"); if(lnB) lnB.addEventListener("click", lobbyStart);
+var hnB = $("rgc-histnew"); if(hnB) hnB.addEventListener("click", newChat);
 var hbB = $("rgc-histback"); if(hbB) hbB.addEventListener("click", closeHistToChat);
 var vhB = $("rgc-viewhist"); if(vhB) vhB.addEventListener("click", function(){ openHistory(); });
 document.addEventListener("click", function(e){
@@ -4965,10 +4841,11 @@ document.addEventListener("click", function(e){
   if(t){ e.preventDefault(); openHistory(); }
 });
 window.RagerChatOpen = openChat;
+window.RagerChatAyuda = openLobby;
 window.RagerChatClose = closeChat;
 document.addEventListener("click", function(e){
   var t = e.target && e.target.closest ? e.target.closest(".rg-chat-open") : null;
-  if(t){ e.preventDefault(); openChat(); }
+  if(t){ e.preventDefault(); if(t.closest(".rg-chat-ayuda")) openLobby(); else openChat(); }
 });
 var cb = $("rgc-close"); if(cb) cb.addEventListener("click", closeChat);
 var chatEl = $("rg-chat"); if(chatEl) chatEl.addEventListener("click", function(e){ if(e.target === chatEl) closeChat(); });

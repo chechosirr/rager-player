@@ -3312,8 +3312,17 @@
   }
   function pipSupported(){
     var v = videoEl();
-    return !!((v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode("picture-in-picture")) ||
-      (v.requestPictureInPicture && document.pictureInPictureEnabled));
+    var std = !!(v.requestPictureInPicture && document.pictureInPictureEnabled);
+    var webkit = !!(v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode("picture-in-picture"));
+    // Con la página anclada a la pantalla de inicio del iPhone
+    // (modo standalone), iOS anuncia la ventana flotante pero la
+    // bloquea en silencio: el botón salía y no hacía nada. Ahí se
+    // trata como no soportada y el botón no aparece; en Safari
+    // abierto normal sí funciona y se queda.
+    var standalone = (window.navigator && window.navigator.standalone === true) ||
+      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+    if(standalone && webkit && !std) return false;
+    return webkit || std;
   }
   function syncPipButton(){
     $("btn-pip").classList.toggle("on", inPip());

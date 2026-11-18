@@ -1328,6 +1328,59 @@
     map[String(sid)] = now;
     lsSet(REMUX_LS_KEY, map);
   }
+  /* PRECARGA AL ENFOCAR (pedido de Sergio, 17-nov): si el ratón o el
+     foco se posan un momento en una tarjeta de canal, se pide su lista
+     y su primer pedazo por adelantado: el proveedor ya está sirviendo
+     el canal, la conexión queda caliente y, si es un canal aprendido
+     de conversión, el puente ya está convirtiendo cuando se hace
+     clic. Una sola precarga a la vez y ninguna mientras suena algo. */
+  var Preload = {
+    timer: null, ctrl: null, sid: 0, lastAt: {},
+    arm: function(ch){
+      var self = this;
+      this.disarm();
+      if(!ch || S.demo || P.open) return;
+      if(isDeadChannel(ch)) return;
+      if(this.lastAt[ch.streamId] && Date.now() - this.lastAt[ch.streamId] < 60000) return;
+      this.timer = setTimeout(function(){ self.run(ch); }, 450);
+    },
+    disarm: function(){
+      if(this.timer){ clearTimeout(this.timer); this.timer = null; }
+    },
+    cancel: function(){
+      this.disarm();
+      if(this.ctrl){ try{ this.ctrl.abort(); }catch(e){} this.ctrl = null; }
+      this.sid = 0;
+    },
+    run: function(ch){
+      var self = this;
+      this.timer = null;
+      if(P.open) return;
+      this.cancel();
+      this.sid = ch.streamId;
+      this.lastAt[ch.streamId] = Date.now();
+      var url = remuxLearned(ch.streamId) ? liveRemuxUrl(ch.streamId) : liveUrl(ch.streamId);
+      var ctrl = ("AbortController" in window) ? new AbortController() : null;
+      this.ctrl = ctrl;
+      var opt = ctrl ? { signal: ctrl.signal } : {};
+      fetch(url, opt).then(function(r){
+        if(!r.ok) throw 0;
+        return r.text();
+      }).then(function(txt){
+        if(self.sid !== ch.streamId) return;
+        var lines = String(txt || "").split("\n"), seg = "";
+        for(var i = 0; i < lines.length; i++){
+          var L = lines[i].trim();
+          if(L && L.charAt(0) !== "#"){ seg = L; break; }
+        }
+        if(!seg) return;
+        if(seg.indexOf("http") !== 0){
+          seg = url.slice(0, url.lastIndexOf("/") + 1) + seg;
+        }
+        return fetch(seg, opt).then(function(r){ return r.arrayBuffer(); });
+      }).catch(function(){});
+    }
+  };
   // Año de estreno desde el nombre («Título (2024)»): la lista de
   // películas del panel no trae año, pero el nombre suele llevarlo.
   function nameYear(name){
@@ -2294,6 +2347,10 @@
       '<div class="chevent">' + (ch.isEvent ? "SOLO EN EVENTO" : "") + "</div>" +
       '<div class="chnow">' + (nowTitle ? "▶ Ahora: " + esc(nowTitle) : "") + "</div>";
     b.addEventListener("click", function(){ playLiveChannel(ch); });
+    b.addEventListener("mouseenter", function(){ Preload.arm(ch); });
+    b.addEventListener("mouseleave", function(){ Preload.disarm(); });
+    b.addEventListener("focus", function(){ Preload.arm(ch); });
+    b.addEventListener("blur", function(){ Preload.disarm(); });
     return b;
   }
   function moreCard(onClick, posterStyle){
@@ -3668,7 +3725,7 @@
       // En las conversiones del puente (lista EVENT que va creciendo)
       // hay que empezar desde el primer segmento, no desde el borde en vivo.
       var hlsCfg = url.indexOf("/remux/") >= 0 ? { maxBufferLength: 30, startPosition: 0 }
-        : (P.kind === "live" ? { maxBufferLength: 30, liveSyncDurationCount: 1, liveMaxLatencyDurationCount: 3, maxLiveSyncPlaybackRate: 1.5 }
+        : (P.kind === "live" ? { maxBufferLength: 30, liveSyncDurationCount: 1, liveMaxLatencyDurationCount: 3, maxLiveSyncPlaybackRate: 1.5, abrEwmaDefaultEstimate: 200000 }
                              : { maxBufferLength: 30 });
       hls = new Hls(hlsCfg);
       hls.loadSource(url);
@@ -3912,6 +3969,7 @@
     showVodBar();
   }
   function playLiveChannel(ch){
+    Preload.cancel();
     if(!P.open) P.returnTarget = captureReturn("live");
     saveVodPosition();
     stopPlayer();

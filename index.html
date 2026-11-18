@@ -1311,6 +1311,7 @@
      puente recodifica el canal y la señal sale limpia. attachSource
      la usa sola cuando la señal directa falla. */
   function liveRemuxUrl(sid){ if(S.token) return tpath("liveremux/" + sid + ".m3u8"); return SERVER + "/liveremux/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + sid + ".m3u8"; }
+  function liveBajaUrl(sid){ if(S.token) return tpath("livebaja/" + sid + ".m3u8"); return SERVER + "/liveremuxb/" + encodeURIComponent(S.user) + "/" + encodeURIComponent(S.pass) + "/" + sid + ".m3u8"; }
   /* Canales que ESTE aparato ya comprobó que necesitan la señal
      convertida (su directa le falló por formato/decodificación o no
      arrancó): se recuerdan 7 días y la próxima vez abren ya por la
@@ -3681,6 +3682,14 @@
         attachSource(altUrl, null);
         return;
       }
+      // Peldaño BAJO adaptativo (pedido de Sergio, 17-nov): antes
+      // de rendirse, el canal cae a la conversión ligera (480p) del
+      // puente, que cualquier conexión sostiene.
+      if(P.kind === "live" && !P.onBaja && !S.demo && P.channel){
+        P.onBaja = true;
+        attachSource(liveBajaUrl(P.channel.streamId), null);
+        return;
+      }
       // Última vía en pie: también tiene derecho a sus reintentos
       // de 5 y 15 s antes de rendirse (la convertida de un canal o
       // la ruta que quede de una película/serie pueden fallar por
@@ -3827,12 +3836,32 @@
       if(P.recoveries && Date.now() - (P.lastProgressAt || 0) > 30000) P.recoveries = 0;
       P.lastProgressAt = Date.now();
       P.lastT = v.currentTime; P.stallSince = 0;
+      // Subida adaptativa (17-nov): sonando en el peldaño bajo con
+      // la red holgada un rato seguido, se vuelve a la señal buena
+      // (la directa o la convertida, según lo aprendido).
+      if(P.kind === "live" && P.onBaja && P.channel && !S.demo && Date.now() > (P.bajaLockUntil || 0)){
+        var estOk = true, need = 20;
+        if(hls){ need = 10; try{ estOk = (hls.bandwidthEstimate || 0) > 3500000; }catch(e){ estOk = false; } }
+        if(estOk){
+          P.bajaGoodTicks = (P.bajaGoodTicks || 0) + 1;
+          if(P.bajaGoodTicks >= need){
+            P.bajaGoodTicks = 0;
+            P.onBaja = false;
+            P.stepUpAt = Date.now();
+            var ap2 = remuxLearned(P.channel.streamId);
+            attachSource(ap2 ? liveRemuxUrl(P.channel.streamId) : liveUrl(P.channel.streamId),
+                         ap2 ? liveUrl(P.channel.streamId) : liveRemuxUrl(P.channel.streamId));
+            return;
+          }
+        } else P.bajaGoodTicks = 0;
+      }
       return;
     }
     // La posición no avanza.
     if(!P.playStarted){ P.stallSince = 0; return; } // aún no arrancó: manda el flujo normal de carga/error
     if(!P.stallSince){ P.stallSince = Date.now(); return; }
     if(Date.now() - P.stallSince < 8000) return;
+    P.bajaGoodTicks = 0;
     recoverPlayback();
   }
   function recoverPlayback(){
@@ -3842,6 +3871,16 @@
     if(P.recoveries === 1){
       if(hls){ try{ hls.startLoad(); }catch(e){} try{ hls.recoverMediaError(); }catch(e){} }
       try{ v.play().catch(function(){}); }catch(e){}
+      return;
+    }
+    if(P.kind === "live" && !S.demo && !P.onBaja && P.channel && P.recoveries === 2){
+      // Atasco repetido SONANDO: la conexión no puede con esta
+      // señal. Se cae al peldaño BAJO (480p) en vez de seguir
+      // recargando la misma señal.
+      P.onBaja = true;
+      P.recoveries = 0;
+      if(P.stepUpAt && Date.now() - P.stepUpAt < 25000) P.bajaLockUntil = Date.now() + 300000;
+      attachSource(liveBajaUrl(P.channel.streamId), null);
       return;
     }
     if(P.recoveries <= 3){ reloadCurrentSource(); return; }
@@ -3865,7 +3904,8 @@
       // había caído a la convertida, se recarga la convertida; si
       // iba por la directa, se recarga la directa con la convertida
       // de respaldo.
-      if(wasAlt) attachSource(liveRemuxUrl(P.channel.streamId), liveUrl(P.channel.streamId));
+      if(P.onBaja) attachSource(liveBajaUrl(P.channel.streamId), null);
+      else if(wasAlt) attachSource(liveRemuxUrl(P.channel.streamId), liveUrl(P.channel.streamId));
       else attachSource(liveUrl(P.channel.streamId), liveRemuxUrl(P.channel.streamId));
     } else if(P.kind === "movie" && P.movie){
       P.resumePos = Math.floor(vodPosition());
@@ -3973,7 +4013,7 @@
     if(!P.open) P.returnTarget = captureReturn("live");
     saveVodPosition();
     stopPlayer();
-    P.kind = "live"; P.channel = ch; P.triedAlt = false;
+    P.kind = "live"; P.channel = ch; P.triedAlt = false; P.onBaja = false; P.bajaGoodTicks = 0;
     pushRecent("live", { sid: ch.streamId, ts: Date.now() }, function(e){ return String(e.sid); });
     $("player-name").textContent = ch.number + " · " + ch.name;
     $("player-sub").textContent = S.live.catName[String(ch.categoryId)] || "";

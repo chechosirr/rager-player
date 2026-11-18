@@ -3312,17 +3312,21 @@
   }
   function pipSupported(){
     var v = videoEl();
-    var std = !!(v.requestPictureInPicture && document.pictureInPictureEnabled);
-    var webkit = !!(v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode("picture-in-picture"));
-    // Con la página anclada a la pantalla de inicio del iPhone
-    // (modo standalone), iOS anuncia la ventana flotante pero la
-    // bloquea en silencio: el botón salía y no hacía nada. Ahí se
-    // trata como no soportada y el botón no aparece; en Safari
-    // abierto normal sí funciona y se queda.
     var standalone = (window.navigator && window.navigator.standalone === true) ||
       (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
-    if(standalone && webkit && !std) return false;
-    return webkit || std;
+    // En WebKit de Apple (webkitSetPresentationMode solo existe
+    // ahí) la señal fiable es su propia sonda: el API estándar
+    // miente (pictureInPictureEnabled dice true y luego la llamada
+    // es rechazada). Y con la página anclada a la pantalla de
+    // inicio, iOS bloquea la ventana flotante siempre — es un
+    // fallo de WebKit abierto desde iOS 14.5 y vigente en iOS 26,
+    // sin vuelta desde la web: ahí el botón ni aparece. En Safari
+    // abierto normal la sonda dice que sí y el botón funciona.
+    if(v.webkitSetPresentationMode){
+      if(standalone) return false;
+      return !!(v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode("picture-in-picture"));
+    }
+    return !!(v.requestPictureInPicture && document.pictureInPictureEnabled);
   }
   function syncPipButton(){
     $("btn-pip").classList.toggle("on", inPip());

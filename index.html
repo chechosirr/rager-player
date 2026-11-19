@@ -914,7 +914,9 @@
     return out;
   }
   function weeklyTopChannels(masterByNumber){
-    var pool = dedupeByKey(masterByNumber, function(ch){ return liveNameKey(ch.name); }).slice(0, 40);
+    // Bolsa: los 40 canales MÁS ESTABLES del catálogo (antes: los
+    // 40 primeros por número); la elección semanal no cambia.
+    var pool = byStability(dedupeByKey(masterByNumber, function(ch){ return liveNameKey(ch.name); })).slice(0, 40);
     return weeklyPick(pool, "live-top10", 10);
   }
 
@@ -1580,6 +1582,36 @@
       }
     }).catch(function(){});
   }
+  /* Puntuación de estabilidad por canal (estabilidad.json del
+     servidor, calculada del historial de revisiones): las filas
+     de categorías y la bolsa del «Top 10 semanal» se ordenan por
+     esta puntuación ANTES de la rotación de siempre, para que
+     los canales que menos fallan sean los que se muestran
+     (pedido de Sergio, 2026-11-18). Sin archivo o sin red, todos
+     los canales valen lo mismo (700) y la selección no cambia. */
+  var stabScores = null;
+  function stabScore(ch){
+    if(!stabScores) return 700;
+    var v = stabScores[String(ch.streamId)];
+    return (typeof v === "number") ? v : 700;
+  }
+  // Orden por puntuación de mayor a menor; el empate conserva el
+  // orden que ya traía la lista (índice explícito: el resultado
+  // es idéntico en la web, la app y la revisión de destacados).
+  function byStability(items){
+    return items.map(function(it, i){ return { it: it, i: i }; })
+      .sort(function(a, b){ return (stabScore(b.it) - stabScore(a.it)) || (a.i - b.i); })
+      .map(function(x){ return x.it; });
+  }
+  function fetchStability(){
+    if(S.demo) return;
+    fetch(SERVER + "/estabilidad.json").then(function(r){ return r.json(); }).then(function(j){
+      if(j && j.scores){
+        stabScores = j.scores;
+        if(S.live && S.section === "live" && !S.searchActive) renderLiveRows();
+      }
+    }).catch(function(){});
+  }
   /* Películas y series apartadas por el monitor VOD del servidor
      (peliculas-muertos.json): el título cuyo archivo no sirve no
      sale en ninguna lista. Sin archivo o sin red, no se aparta
@@ -1631,6 +1663,7 @@
       S.live = wrapLive(cats, channels, master);
       fetchDailyEvents();
       fetchDeadChannels();
+      fetchStability();
       fetchDeadVod();
       return S.live;
     });
@@ -2760,7 +2793,7 @@
       var full = byOwn[bucket];
       if(!full || !full.length) return;
       host.appendChild(lazyRowBlock(bucket, false, function(){
-        return dailyRotation(full, "live-cat-" + bucket, 20).map(function(ch){ return channelCard(ch); });
+        return dailyRotation(byStability(full).slice(0, 40), "live-cat-" + bucket, 20).map(function(ch){ return channelCard(ch); });
       }, function(){
         openGrid({ kind: "channels", title: bucket, items: full });
         S.gridReturn = "live";
@@ -2793,7 +2826,7 @@
     groups.forEach(function(g){
       (function(grp){
         body.appendChild(lazyRowBlock(grp.country, false, function(){
-          return dailyRotation(grp.channels, "live-country-" + grp.country, 20).map(function(ch){ return channelCard(ch); });
+          return dailyRotation(byStability(grp.channels).slice(0, 40), "live-country-" + grp.country, 20).map(function(ch){ return channelCard(ch); });
         }, function(){
           openGrid({ kind: "channels", title: grp.country, items: grp.channels });
           S.gridReturn = "countries";
@@ -3089,7 +3122,7 @@
     // Al (re)entrar a TV en vivo se refresca la lista de apartados:
     // en una sesión larga, un canal puede morir después de la carga
     // inicial y no debe seguir saliendo en la pantalla de inicio.
-    if(kind === "live" && !S.demo) fetchDeadChannels();
+    if(kind === "live" && !S.demo){ fetchDeadChannels(); fetchStability(); }
     load.then(function(){
       if(kind === "live") renderLiveSection(body);
       else renderVodSection(body, kind);

@@ -1452,6 +1452,13 @@
     "Farándula y Entretenimiento", "Infantil", "Música", "Cultura y Documentales",
     "Religión", "EE. UU. y Canadá", "Latinoamérica y el Caribe", "España",
     "Europa", "Resto del mundo", "Variedades", "Radios", "Adultos"];
+  /* Grupos fijos de la taxonomía que sirve el puente por la
+     puerta del token (la misma de VivaPlayer, 2026-11-20):
+     todo grupo servido que NO esté aquí es un país. */
+  var LIVE_FIXED_GROUPS = { "Eventos del día": 1, "Noticias": 1, "Deportes": 1,
+    "Farándula y Entretenimiento": 1, "Infantil": 1, "Música": 1,
+    "Cultura y Documentales": 1, "Películas y Cine": 1, "Series y Novelas": 1,
+    "Religión": 1, "Radios": 1, "Variedades": 1, "Otros países": 1, "Adultos": 1 };
   function clsNorm(s){
     return (s || "").toUpperCase().replace(/[^A-ZÁÉÍÓÚÜÑ0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
   }
@@ -1660,6 +1667,10 @@
         return { streamId: Number(s.stream_id)||0, name: s.name || ("Canal " + s.stream_id), icon: s.stream_icon || "", categoryId: String(s.category_id), number: 0 };
       }).filter(function(ch){ return ch.streamId !== 0; });
       var master = assignNumbersPersisted(cats, channels);
+      // Con sesión (puerta del token), el puente ya entrega
+      // los canales repartidos en las categorías de la casa:
+      // wrapLive las respeta tal cual en vez de reclasificar.
+      S.liveAuth = !!S.token;
       S.live = wrapLive(cats, channels, master);
       fetchDailyEvents();
       fetchDeadChannels();
@@ -1677,6 +1688,17 @@
     // categorías, del Top 10 y de «Ver por países».
     master.forEach(function(ch){
       var cn = catName[String(ch.categoryId)] || "";
+      if(S.liveAuth){
+        // El grupo servido manda (las mismas categorías que
+        // en VivaPlayer): no se reclasifica en el cliente.
+        // Los del grupo «Eventos del día» son los eventos de
+        // hoy y viven en su fila, como siempre.
+        ch.isEvent = (cn === "Eventos del día");
+        ch.dailyEvent = ch.isEvent;
+        ch.own = ch.isEvent ? "" : cn;
+        ch.isSpanish = isSpanishChannel(ch, cn);
+        return;
+      }
       ch.isEvent = isEventChannel(ch, cn);
       ch.dailyEvent = isDailyEvent(ch, cn);
       ch.own = ch.isEvent ? "" : ownCategoryOf(ch, cn);
@@ -2740,7 +2762,12 @@
      ================================================================ */
   function countryOfChannel(ch){
     if(S.demo && DEMO_COUNTRY_OVERRIDES[ch.name]) return DEMO_COUNTRY_OVERRIDES[ch.name];
-    return countryOfCategory(S.live.catName[String(ch.categoryId)]);
+    var cn = S.live.catName[String(ch.categoryId)];
+    // Con las categorías servidas por el puente, el grupo de
+    // un canal ya ES su país cuando no es un grupo fijo: la
+    // vista por países lo usa tal cual (salen los 96 países).
+    if(S.liveAuth && cn && !LIVE_FIXED_GROUPS[cn] && cn !== "Adultos") return cn;
+    return countryOfCategory(cn);
   }
   function groupByCountry(){
     var groups = [], idx = {};
@@ -2902,7 +2929,22 @@
     });
     // Primero los canales en español dentro de cada categoría.
     Object.keys(byOwn).forEach(function(b){ byOwn[b] = spanishFirst(byOwn[b]); });
-    TAXONOMY.forEach(function(bucket){
+    // Orden de las filas: con sesión manda el orden servido
+    // por el puente (el de VivaPlayer: grupos fijos, países
+    // A–Z, «Otros países» y «Adultos» al final); en directo
+    // o demo, la taxonomía de siempre.
+    var orden = TAXONOMY;
+    if(S.liveAuth && S.live.cats){
+      orden = S.live.cats.map(function(c){ return c.name; })
+        .filter(function(n){ return n !== "Eventos del día" && byOwn[n]; });
+      Object.keys(byOwn).forEach(function(b){
+        if(orden.indexOf(b) < 0){
+          var ia = orden.indexOf("Adultos");
+          if(ia >= 0) orden.splice(ia, 0, b); else orden.push(b);
+        }
+      });
+    }
+    orden.forEach(function(bucket){
       var full = byOwn[bucket];
       if(!full || !full.length) return;
       host.appendChild(lazyRowBlock(bucket, false, function(){

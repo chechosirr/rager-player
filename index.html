@@ -1752,35 +1752,49 @@
     if(S.movies) return Promise.resolve(S.movies);
     if(S.demo){ S.movies = buildDemoMovies(); return Promise.resolve(S.movies); }
     if(S._moviesP) return S._moviesP;
-    S._moviesP = Promise.all([api("get_vod_categories"), api("get_vod_streams")]).then(function(res){
-      var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: cleanCatName(c.category_name || "Sin categoría") }; });
-      var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
-        var year = o.year || (o.releasedate ? String(o.releasedate).slice(0,4) : "");
-        return { streamId: Number(o.stream_id)||0, name: o.name || ("Película " + o.stream_id), icon: o.stream_icon || "",
-                 categoryId: String(o.category_id), extension: o.container_extension || "mp4",
-                 extra: year || (o.rating ? String(o.rating) : ""), year: nameYear(o.name), rating: parseRating(o),
-                 added: parseInt(o.added, 10) || 0 };
-      }).filter(function(m){ return m.streamId !== 0 && !isDeadMovie(m); });
-      S.movies = { cats: cats, items: items };
-      S._moviesP = null;
-      return S.movies;
-    }).catch(function(e){ S._moviesP = null; throw e; });
+    var attempt = function(n){
+      return Promise.all([api("get_vod_categories"), api("get_vod_streams")]).then(function(res){
+        var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: cleanCatName(c.category_name || "Sin categoría") }; });
+        var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
+          var year = o.year || (o.releasedate ? String(o.releasedate).slice(0,4) : "");
+          return { streamId: Number(o.stream_id)||0, name: o.name || ("Película " + o.stream_id), icon: o.stream_icon || "",
+                   categoryId: String(o.category_id), extension: o.container_extension || "mp4",
+                   extra: year || (o.rating ? String(o.rating) : ""), year: nameYear(o.name), rating: parseRating(o),
+                   added: parseInt(o.added, 10) || 0 };
+        }).filter(function(m){ return m.streamId !== 0 && !isDeadMovie(m); });
+        S.movies = { cats: cats, items: items };
+        return S.movies;
+      }).catch(function(e){
+        // La descarga del catálogo es grande: un corte de red o un
+        // puente ocupado no deben dejar la sección ni el escaparate
+        // muertos en toda la visita; se reintenta (2026-11-20).
+        if(n < 2) return new Promise(function(res2){ setTimeout(res2, n ? 3500 : 1200); }).then(function(){ return attempt(n + 1); });
+        throw e;
+      });
+    };
+    S._moviesP = attempt(0).then(function(m){ S._moviesP = null; return m; }, function(e){ S._moviesP = null; throw e; });
     return S._moviesP;
   }
   function loadSeriesData(){
     if(S.series) return Promise.resolve(S.series);
     if(S.demo){ S.series = buildDemoSeries(); return Promise.resolve(S.series); }
     if(S._seriesP) return S._seriesP;
-    S._seriesP = Promise.all([api("get_series_categories"), api("get_series")]).then(function(res){
-      var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: cleanCatName(c.category_name || "Sin categoría") }; });
-      var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
-        return { seriesId: Number(o.series_id)||0, name: o.name || ("Serie " + o.series_id), cover: o.cover || "",
-                 categoryId: String(o.category_id), year: parseInt(String(o.releaseDate || o.year || "").slice(0, 4), 10) || 0, rating: parseRating(o), added: parseEpochLoose(o.last_modified) };
-      }).filter(function(s){ return s.seriesId !== 0 && !isDeadSerie(s); });
-      S.series = { cats: cats, items: items };
-      S._seriesP = null;
-      return S.series;
-    }).catch(function(e){ S._seriesP = null; throw e; });
+    var attempt = function(n){
+      return Promise.all([api("get_series_categories"), api("get_series")]).then(function(res){
+        var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: cleanCatName(c.category_name || "Sin categoría") }; });
+        var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
+          return { seriesId: Number(o.series_id)||0, name: o.name || ("Serie " + o.series_id), cover: o.cover || "",
+                   categoryId: String(o.category_id), year: parseInt(String(o.releaseDate || o.year || "").slice(0, 4), 10) || 0, rating: parseRating(o), added: parseEpochLoose(o.last_modified) };
+        }).filter(function(s){ return s.seriesId !== 0 && !isDeadSerie(s); });
+        S.series = { cats: cats, items: items };
+        return S.series;
+      }).catch(function(e){
+        // Mismo reintento que en películas (2026-11-20).
+        if(n < 2) return new Promise(function(res2){ setTimeout(res2, n ? 3500 : 1200); }).then(function(){ return attempt(n + 1); });
+        throw e;
+      });
+    };
+    S._seriesP = attempt(0).then(function(m){ S._seriesP = null; return m; }, function(e){ S._seriesP = null; throw e; });
     return S._seriesP;
   }
   /* Respuesta completa de get_series_info en caché: de ella salen los

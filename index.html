@@ -1686,46 +1686,10 @@
     return { cats: cats, channels: channels, master: master, byNumber: byNumber, catName: catName,
              normals: normals, probedIds: null };
   }
-  /* Prioridad DENTRO de «Eventos del día» (pedido de Sergio,
-     2026-11-20): primero los partidos de Champions; después el
-     fútbol en general, con el Real Madrid y el Barça por delante
-     dentro del fútbol; después las peleas de UFC y de boxeo; el
-     resto conserva el orden del catálogo. La misma regla vive en
-     la app y en el puente (listaEventoPrioridad). */
-  function evKey(s){
-    // Los acentos se quitan ANTES de clsNorm: su alfabeto no trae
-    // la «Ç» y «BARÇA» quedaría «BAR A», sin casar nunca.
-    return clsNorm((s || "").toUpperCase().replace(/Á/g, "A").replace(/É/g, "E").replace(/Í/g, "I")
-      .replace(/Ó/g, "O").replace(/Ú/g, "U").replace(/Ü/g, "U").replace(/Ñ/g, "N").replace(/Ç/g, "C"));
-  }
-  var EV_CHAMPIONS_RE = /(CHAMPIONS|CAMPEONES|EVENTOS DISNEY|EVENTOS FOX ONE|\bUCL\b)/;
-  var EV_FUTBOL_RE = /(SOCCER|\bFUTBOL\b|LALIGA|LA LIGA|PREMIER LEAGUE|BUNDESLIGA|SERIE A|SERIE B|LIGUE 1|LIGA MX|DIMAYOR|\bMLS\b|MUNDIAL|LIBERTADORES|SUDAMERICANA|EREDIVISIE|COPA DEL REY|COPA DE PORTUGAL|\bCOPA\b|EUROPA LEAGUE|CONFERENCE LEAGUE|LEAGUE ONE|LEAGUE TWO|LIGA SAUDI|LIGAPRO|LIGA PRO|PRIMERA DIVISION|PRIMERA NACIONAL|FA CUP|DFB POKAL|ELIMINATORIAS|EUROCOPA)/;
-  var EV_PELEA_RE = /(\bUFC\b|\bBOXEO\b|\bBOX\b|\bMMA\b|BKFC)/;
-  function eventPriority(ch){
-    var nk = evKey(ch.name);
-    var both = nk + " " + evKey(S.live ? (S.live.catName[String(ch.categoryId)] || "") : "");
-    var champions = EV_CHAMPIONS_RE.test(both);
-    // «El Madrid» es el Real Madrid: el Atlético no cuenta.
-    var madridBarca = /\bREAL MADRID\b/.test(nk) ||
-      (/\bMADRID\b/.test(nk) && !/ATLETICO/.test(nk)) ||
-      /BARCELONA/.test(nk) || /\bBARCA\b/.test(nk);
-    var futbol = champions || EV_FUTBOL_RE.test(both);
-    if(champions && madridBarca) return 100;
-    if(champions) return 90;
-    if(futbol && madridBarca) return 80;
-    if(futbol) return 70;
-    if(EV_PELEA_RE.test(nk)) return 60;
-    return 0;
-  }
-  function sortEventPriority(list){
-    return list.map(function(ch, i){ return { ch: ch, i: i, p: eventPriority(ch) }; })
-      .sort(function(a, b){ return (b.p - a.p) || (a.i - b.i); })
-      .map(function(x){ return x.ch; });
-  }
   /* Canales de la sección «Eventos del día»: la cartelera con fecha u
      hora en el nombre (es la cartelera de hoy por construcción) más
      los canales de evento que el trabajo diario del servidor encontró
-     CON señal hoy (eventos.json). Salen con la prioridad de Sergio. */
+     CON señal hoy (eventos.json). */
   function dailyEventChannels(){
     var out = [];
     if(!S.live) return out;
@@ -1733,7 +1697,7 @@
       if(!ch.isEvent || isDeadChannel(ch)) return;
       if(ch.dailyEvent || (S.live.probedIds && S.live.probedIds[String(ch.streamId)])) out.push(ch);
     });
-    return sortEventPriority(out);
+    return out;
   }
   function fetchDailyEvents(){
     if(S.demo) return;
@@ -1742,60 +1706,37 @@
         var set = {};
         j.ids.forEach(function(id){ set[String(id)] = 1; });
         S.live.probedIds = set;
-        // La fila de «Eventos del día» se redibuja al llegar la
-        // sonda, igual que con los apartados y la estabilidad.
-        if(S.section === "live" && !S.searchActive) renderLiveRows();
       }
     }).catch(function(){});
   }
   function loadMoviesData(){
     if(S.movies) return Promise.resolve(S.movies);
     if(S.demo){ S.movies = buildDemoMovies(); return Promise.resolve(S.movies); }
-    if(S._moviesP) return S._moviesP;
-    var attempt = function(n){
-      return Promise.all([api("get_vod_categories"), api("get_vod_streams")]).then(function(res){
-        var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: cleanCatName(c.category_name || "Sin categoría") }; });
-        var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
-          var year = o.year || (o.releasedate ? String(o.releasedate).slice(0,4) : "");
-          return { streamId: Number(o.stream_id)||0, name: o.name || ("Película " + o.stream_id), icon: o.stream_icon || "",
-                   categoryId: String(o.category_id), extension: o.container_extension || "mp4",
-                   extra: year || (o.rating ? String(o.rating) : ""), year: nameYear(o.name), rating: parseRating(o),
-                   added: parseInt(o.added, 10) || 0 };
-        }).filter(function(m){ return m.streamId !== 0 && !isDeadMovie(m); });
-        S.movies = { cats: cats, items: items };
-        return S.movies;
-      }).catch(function(e){
-        // La descarga del catálogo es grande: un corte de red o un
-        // puente ocupado no deben dejar la sección ni el escaparate
-        // muertos en toda la visita; se reintenta (2026-11-20).
-        if(n < 2) return new Promise(function(res2){ setTimeout(res2, n ? 3500 : 1200); }).then(function(){ return attempt(n + 1); });
-        throw e;
-      });
-    };
-    S._moviesP = attempt(0).then(function(m){ S._moviesP = null; return m; }, function(e){ S._moviesP = null; throw e; });
-    return S._moviesP;
+    return Promise.all([api("get_vod_categories"), api("get_vod_streams")]).then(function(res){
+      var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: cleanCatName(c.category_name || "Sin categoría") }; });
+      var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
+        var year = o.year || (o.releasedate ? String(o.releasedate).slice(0,4) : "");
+        return { streamId: Number(o.stream_id)||0, name: o.name || ("Película " + o.stream_id), icon: o.stream_icon || "",
+                 categoryId: String(o.category_id), extension: o.container_extension || "mp4",
+                 extra: year || (o.rating ? String(o.rating) : ""), year: nameYear(o.name), rating: parseRating(o),
+                 added: parseInt(o.added, 10) || 0 };
+      }).filter(function(m){ return m.streamId !== 0 && !isDeadMovie(m); });
+      S.movies = { cats: cats, items: items };
+      return S.movies;
+    });
   }
   function loadSeriesData(){
     if(S.series) return Promise.resolve(S.series);
     if(S.demo){ S.series = buildDemoSeries(); return Promise.resolve(S.series); }
-    if(S._seriesP) return S._seriesP;
-    var attempt = function(n){
-      return Promise.all([api("get_series_categories"), api("get_series")]).then(function(res){
-        var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: cleanCatName(c.category_name || "Sin categoría") }; });
-        var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
-          return { seriesId: Number(o.series_id)||0, name: o.name || ("Serie " + o.series_id), cover: o.cover || "",
-                   categoryId: String(o.category_id), year: parseInt(String(o.releaseDate || o.year || "").slice(0, 4), 10) || 0, rating: parseRating(o), added: parseEpochLoose(o.last_modified) };
-        }).filter(function(s){ return s.seriesId !== 0 && !isDeadSerie(s); });
-        S.series = { cats: cats, items: items };
-        return S.series;
-      }).catch(function(e){
-        // Mismo reintento que en películas (2026-11-20).
-        if(n < 2) return new Promise(function(res2){ setTimeout(res2, n ? 3500 : 1200); }).then(function(){ return attempt(n + 1); });
-        throw e;
-      });
-    };
-    S._seriesP = attempt(0).then(function(m){ S._seriesP = null; return m; }, function(e){ S._seriesP = null; throw e; });
-    return S._seriesP;
+    return Promise.all([api("get_series_categories"), api("get_series")]).then(function(res){
+      var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: cleanCatName(c.category_name || "Sin categoría") }; });
+      var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
+        return { seriesId: Number(o.series_id)||0, name: o.name || ("Serie " + o.series_id), cover: o.cover || "",
+                 categoryId: String(o.category_id), year: parseInt(String(o.releaseDate || o.year || "").slice(0, 4), 10) || 0, rating: parseRating(o), added: parseEpochLoose(o.last_modified) };
+      }).filter(function(s){ return s.seriesId !== 0 && !isDeadSerie(s); });
+      S.series = { cats: cats, items: items };
+      return S.series;
+    });
   }
   /* Respuesta completa de get_series_info en caché: de ella salen los
      episodios (loadEpisodes) y la ficha de la serie (descripción y
@@ -1890,45 +1831,17 @@
       if(u){ var im = new Image(); im.src = u; }
     });
   }
-  /* Portadas del escaparate YA descargadas y comprobadas durante la
-     animación de entrada (pedido de Sergio, 2026-11-20): al terminar
-     la escritura de RAGER, la primera imagen ya está en la caché del
-     navegador y el fondo se pinta al instante, sin hueco oscuro. */
-  var bdWarm = null, bdWarmHour = -1;
   function startBackgroundLoads(){
     // SOLO las imágenes del ESCAPARATE del panel (pedido expreso de
     // Sergio): las 6 portadas del fondo rotativo. Todo lo demás
     // (datos e imágenes de cada sección) carga al entrar a su
-    // sección, como siempre. La precarga COMPRUEBA cada portada
-    // (onload): las que el servidor de imágenes rechaza no entran
-    // en la rotación, para que el escaparate nunca pinte un hueco.
+    // sección, como siempre.
     var warm = function(){
-      try{
-        var items = showcaseItems();
-        if(!items.length) return;
-        var ok = [], pending = items.length;
-        var fin = function(){
-          bdWarm = items.filter(function(it){ return ok.indexOf(it) >= 0; });
-          if(!bdWarm.length) bdWarm = items;
-          bdWarmHour = hourSeed();
-          if(!$("view-home").classList.contains("hidden")) startBackdrop();
-        };
-        items.forEach(function(it){
-          var im = new Image();
-          im.onload = function(){ ok.push(it); if(--pending === 0) fin(); };
-          im.onerror = function(){ if(--pending === 0) fin(); };
-          im.src = it.img;
-        });
-      }catch(e){}
+      try{ preloadImages(showcaseItems().map(function(x){ return x.img; }), 6); }catch(e){}
     };
     if(S.demo){ warm(); return; }
-    if(S.movies && S.series){ warm(); return; }
-    // Películas Y series: la selección del escaparate sale de las
-    // dos; si una falla, se calienta con la otra.
-    Promise.all([
-      loadMoviesData().catch(function(){ return null; }),
-      loadSeriesData().catch(function(){ return null; })
-    ]).then(warm);
+    if(S.movies){ warm(); return; }
+    loadMoviesData().then(warm).catch(function(){});
   }
   /* Trazos del «lápiz» por letra, en unidades (x: 0..1 sobre el
      avance de la letra; y: 0 = alto de la mayúscula, 1 = base).
@@ -2364,10 +2277,7 @@
   function startBackdrop(){
     stopBackdrop();
     bdHour = hourSeed();
-    // Si la precarga de la animación de entrada ya dejó las portadas
-    // descargadas y comprobadas, se usan esas: la primera pinta al
-    // instante, sin esperar a la red.
-    bdItems = (bdWarm && bdWarmHour === bdHour && bdWarm.length) ? bdWarm : showcaseItems();
+    bdItems = showcaseItems();
     bdIndex = 0;
     applyBackdrop(bdItems.length ? bdItems[0] : null);
     bdTimer = setInterval(function(){
@@ -2376,20 +2286,8 @@
         bdHour = hourSeed();
         bdItems = showcaseItems();
         bdIndex = 0;
-        if(bdItems.length === 0 && !S.demo){
-          // La primera carga de datos falló (red, puente ocupado):
-          // se reintenta aquí, para que el escaparate no se quede
-          // sin imágenes durante toda la visita.
-          loadMoviesData().then(function(){
-            if(!$("view-home").classList.contains("hidden")) startBackdrop();
-          }).catch(function(){});
-          loadSeriesData().catch(function(){});
-        }
       } else if(bdItems.length > 1){
         bdIndex = (bdIndex + 1) % bdItems.length;
-        // La siguiente portada se pide ya, para que la rotación
-        // nunca enseñe un fondo vacío mientras descarga.
-        try{ preloadImages([bdItems[(bdIndex + 1) % bdItems.length].img], 1); }catch(e){}
       }
       applyBackdrop(bdItems.length ? bdItems[bdIndex] : null);
     }, 8000);
@@ -2786,7 +2684,8 @@
     srow.className = "search-row";
     srow.innerHTML = '<input id="live-search" type="search" placeholder="Buscar canal o programa en vivo…" autocomplete="off">' +
                      '<button id="btn-live-search" class="btn-search" type="button">Buscar</button>' +
-                     '<button id="btn-countries" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Ver por países</button>';
+                     '<button id="btn-countries" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Ver por países</button>' +
+                     '<button id="btn-events" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Eventos del día</button>';
     body.appendChild(srow);
 
     var rowsHost = document.createElement("div");
@@ -2798,6 +2697,7 @@
     body.appendChild(searchHost);
 
     $("btn-countries").addEventListener("click", renderCountries);
+    $("btn-events").addEventListener("click", renderDailyEvents);
     // La búsqueda SOLO corre al pulsar «Buscar» (o Enter): escribir no
     // filtra nada. Tras buscar, el «←» de la cabecera devuelve al
     // inicio de la sección (las filas, con el buscador vacío).
@@ -2879,20 +2779,7 @@
         S.gridReturn = "live";
       }));
     }
-    // 3) «Eventos del día» como una categoría más (pedido de Sergio,
-    // 2026-11-20: fuera el botón; la fila va tercera, tras el Top 10
-    // y Recientes, con la prioridad Champions/fútbol/UFC-boxeo y su
-    // «Ver más» a la parrilla completa)
-    var evs = dailyEventChannels();
-    if(evs.length){
-      host.appendChild(lazyRowBlock("Eventos del día", false, function(){
-        return dailyEventChannels().slice(0, 20).map(function(ch){ return channelCard(ch); });
-      }, function(){
-        openGrid({ kind: "channels", title: "Eventos del día", items: dailyEventChannels() });
-        S.gridReturn = "live";
-      }));
-    }
-    // 4) Filas por NUESTRA taxonomía (los de evento quedan fuera: solo
+    // 3) Filas por NUESTRA taxonomía (los de evento quedan fuera: solo
     // salen en «Eventos del día» y en la búsqueda, con su distintivo)
     var byOwn = {};
     S.live.normals.forEach(function(ch){
@@ -4987,7 +4874,6 @@ body.rg-gated>#rg-help-fab{display:block!important}
 body.rg-gated>#rg-chat{display:flex!important}
 body.rg-gated>#rg-chat.rgc-hidden{display:none!important}
 .rgc-box{background:#121218;color:#f2f2f5;width:min(430px,100vw);height:min(660px,100dvh);display:flex;flex-direction:column;border-radius:18px 18px 0 0;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.6);font-family:inherit}
-@media(max-width:699px){.rgc-box{height:min(720px,100dvh);padding-bottom:calc(38px + env(safe-area-inset-bottom,0px))}}
 @media(min-width:700px){#rg-chat{padding:22px}.rgc-box{border-radius:18px}}
 .rgc-head{background:#e0342f;color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;font-weight:800;font-size:17px}
 .rgc-head button{background:transparent;border:0;color:#fff;font-size:24px;line-height:1;cursor:pointer;padding:2px 8px}

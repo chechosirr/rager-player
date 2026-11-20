@@ -1686,10 +1686,46 @@
     return { cats: cats, channels: channels, master: master, byNumber: byNumber, catName: catName,
              normals: normals, probedIds: null };
   }
+  /* Prioridad DENTRO de «Eventos del día» (pedido de Sergio,
+     2026-11-20): primero los partidos de Champions; después el
+     fútbol en general, con el Real Madrid y el Barça por delante
+     dentro del fútbol; después las peleas de UFC y de boxeo; el
+     resto conserva el orden del catálogo. La misma regla vive en
+     la app y en el puente (listaEventoPrioridad). */
+  function evKey(s){
+    // Los acentos se quitan ANTES de clsNorm: su alfabeto no trae
+    // la «Ç» y «BARÇA» quedaría «BAR A», sin casar nunca.
+    return clsNorm((s || "").toUpperCase().replace(/Á/g, "A").replace(/É/g, "E").replace(/Í/g, "I")
+      .replace(/Ó/g, "O").replace(/Ú/g, "U").replace(/Ü/g, "U").replace(/Ñ/g, "N").replace(/Ç/g, "C"));
+  }
+  var EV_CHAMPIONS_RE = /(CHAMPIONS|CAMPEONES|\bUCL\b)/;
+  var EV_FUTBOL_RE = /(SOCCER|\bFUTBOL\b|LALIGA|LA LIGA|PREMIER LEAGUE|BUNDESLIGA|SERIE A|SERIE B|LIGUE 1|LIGA MX|DIMAYOR|\bMLS\b|MUNDIAL|LIBERTADORES|SUDAMERICANA|EREDIVISIE|COPA DEL REY|COPA DE PORTUGAL|\bCOPA\b|EUROPA LEAGUE|CONFERENCE LEAGUE|LEAGUE ONE|LEAGUE TWO|LIGA SAUDI|LIGAPRO|LIGA PRO|PRIMERA DIVISION|PRIMERA NACIONAL|FA CUP|DFB POKAL|ELIMINATORIAS|EUROCOPA)/;
+  var EV_PELEA_RE = /(\bUFC\b|\bBOXEO\b|\bBOX\b|\bMMA\b|BKFC)/;
+  function eventPriority(ch){
+    var nk = evKey(ch.name);
+    var both = nk + " " + evKey(S.live ? (S.live.catName[String(ch.categoryId)] || "") : "");
+    var champions = EV_CHAMPIONS_RE.test(both);
+    // «El Madrid» es el Real Madrid: el Atlético no cuenta.
+    var madridBarca = /\bREAL MADRID\b/.test(nk) ||
+      (/\bMADRID\b/.test(nk) && !/ATLETICO/.test(nk)) ||
+      /BARCELONA/.test(nk) || /\bBARCA\b/.test(nk);
+    var futbol = champions || EV_FUTBOL_RE.test(both);
+    if(champions && madridBarca) return 100;
+    if(champions) return 90;
+    if(futbol && madridBarca) return 80;
+    if(futbol) return 70;
+    if(EV_PELEA_RE.test(nk)) return 60;
+    return 0;
+  }
+  function sortEventPriority(list){
+    return list.map(function(ch, i){ return { ch: ch, i: i, p: eventPriority(ch) }; })
+      .sort(function(a, b){ return (b.p - a.p) || (a.i - b.i); })
+      .map(function(x){ return x.ch; });
+  }
   /* Canales de la sección «Eventos del día»: la cartelera con fecha u
      hora en el nombre (es la cartelera de hoy por construcción) más
      los canales de evento que el trabajo diario del servidor encontró
-     CON señal hoy (eventos.json). */
+     CON señal hoy (eventos.json). Salen con la prioridad de Sergio. */
   function dailyEventChannels(){
     var out = [];
     if(!S.live) return out;
@@ -1697,7 +1733,7 @@
       if(!ch.isEvent || isDeadChannel(ch)) return;
       if(ch.dailyEvent || (S.live.probedIds && S.live.probedIds[String(ch.streamId)])) out.push(ch);
     });
-    return out;
+    return sortEventPriority(out);
   }
   function fetchDailyEvents(){
     if(S.demo) return;
@@ -1706,6 +1742,9 @@
         var set = {};
         j.ids.forEach(function(id){ set[String(id)] = 1; });
         S.live.probedIds = set;
+        // La fila de «Eventos del día» se redibuja al llegar la
+        // sonda, igual que con los apartados y la estabilidad.
+        if(S.section === "live" && !S.searchActive) renderLiveRows();
       }
     }).catch(function(){});
   }
@@ -2733,8 +2772,7 @@
     srow.className = "search-row";
     srow.innerHTML = '<input id="live-search" type="search" placeholder="Buscar canal o programa en vivo…" autocomplete="off">' +
                      '<button id="btn-live-search" class="btn-search" type="button">Buscar</button>' +
-                     '<button id="btn-countries" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Ver por países</button>' +
-                     '<button id="btn-events" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Eventos del día</button>';
+                     '<button id="btn-countries" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Ver por países</button>';
     body.appendChild(srow);
 
     var rowsHost = document.createElement("div");
@@ -2746,7 +2784,6 @@
     body.appendChild(searchHost);
 
     $("btn-countries").addEventListener("click", renderCountries);
-    $("btn-events").addEventListener("click", renderDailyEvents);
     // La búsqueda SOLO corre al pulsar «Buscar» (o Enter): escribir no
     // filtra nada. Tras buscar, el «←» de la cabecera devuelve al
     // inicio de la sección (las filas, con el buscador vacío).
@@ -2828,7 +2865,20 @@
         S.gridReturn = "live";
       }));
     }
-    // 3) Filas por NUESTRA taxonomía (los de evento quedan fuera: solo
+    // 3) «Eventos del día» como una categoría más (pedido de Sergio,
+    // 2026-11-20: fuera el botón; la fila va tercera, tras el Top 10
+    // y Recientes, con la prioridad Champions/fútbol/UFC-boxeo y su
+    // «Ver más» a la parrilla completa)
+    var evs = dailyEventChannels();
+    if(evs.length){
+      host.appendChild(lazyRowBlock("Eventos del día", false, function(){
+        return dailyEventChannels().slice(0, 20).map(function(ch){ return channelCard(ch); });
+      }, function(){
+        openGrid({ kind: "channels", title: "Eventos del día", items: dailyEventChannels() });
+        S.gridReturn = "live";
+      }));
+    }
+    // 4) Filas por NUESTRA taxonomía (los de evento quedan fuera: solo
     // salen en «Eventos del día» y en la búsqueda, con su distintivo)
     var byOwn = {};
     S.live.normals.forEach(function(ch){
@@ -4923,7 +4973,7 @@ body.rg-gated>#rg-help-fab{display:block!important}
 body.rg-gated>#rg-chat{display:flex!important}
 body.rg-gated>#rg-chat.rgc-hidden{display:none!important}
 .rgc-box{background:#121218;color:#f2f2f5;width:min(430px,100vw);height:min(660px,100dvh);display:flex;flex-direction:column;border-radius:18px 18px 0 0;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.6);font-family:inherit}
-@media(max-width:699px){.rgc-box{height:min(720px,100dvh);padding-bottom:calc(38px + env(safe-area-inset-bottom,0px))}}
+@media(max-width:699px){.rgc-box{height:min(720px,100dvh);padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))}}
 @media(min-width:700px){#rg-chat{padding:22px}.rgc-box{border-radius:18px}}
 .rgc-head{background:#e0342f;color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;font-weight:800;font-size:17px}
 .rgc-head button{background:transparent;border:0;color:#fff;font-size:24px;line-height:1;cursor:pointer;padding:2px 8px}

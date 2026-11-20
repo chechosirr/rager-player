@@ -1448,10 +1448,17 @@
      «SOLO EN EVENTO». Las reglas son las mismas en la web, en la app
      y en el trabajo diario del servidor.
      ================================================================ */
-  var TAXONOMY = ["Noticias", "Deportes", "Películas y Cine", "Series y Novelas",
-    "Farándula y Entretenimiento", "Infantil", "Música", "Cultura y Documentales",
-    "Religión", "EE. UU. y Canadá", "Latinoamérica y el Caribe", "España",
-    "Europa", "Resto del mundo", "Variedades", "Radios", "Adultos"];
+  /* Estructura de Canales (orden de Sergio, 2026-11-20): los
+     grupos fijos de TAXONOMY, después los PAÍSES presentes en
+     orden alfabético («Otros países» cierra el bloque) y
+     «Adultos» al final de todo. Arriba de todo van los tres
+     estantes del reproductor: Top 10 semanal, Recientes y
+     Eventos del día. La asignación de cada canal es la misma
+     que usa la fachada del puente para agrupar, ejecutada
+     aquí en el cliente sobre el catálogo directo del panel. */
+  var TAXONOMY = ["Noticias", "Deportes", "Farándula y Entretenimiento",
+    "Infantil", "Música", "Cultura y Documentales", "Películas y Cine",
+    "Series y Novelas", "Religión", "Radios", "Variedades"];
   function clsNorm(s){
     return (s || "").toUpperCase().replace(/[^A-ZÁÉÍÓÚÜÑ0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
   }
@@ -1515,20 +1522,107 @@
     ["Farándula y Entretenimiento", ["REALITY", "FARANDULA", "GALAVISION",
       "LAS ESTRELLAS", "ESTRELLA TV"]]
   ];
-  var LATAM_KEYS = ["MEXICO", "NICARAGUA", "GUATEMALA", "HONDURAS", "EL SALVADOR",
-    "COSTA RICA", "PANAMA", "COLOMBIA", "VENEZUELA", "ECUADOR", "PERU",
-    "BOLIVIA", "PARAGUAY", "URUGUAY", "CHILE", "ARGENTINA", "REP DOMINICANA",
-    "DOMINICANA", "PUERTO RICO", "CUBA", "BRASIL", "CURAZAO", "OTROS PAISES DE AMERICA"];
-  var EUROPA_KEYS = ["UNITED KINGDOM", "GERMANY", "FRANCE", "ITALY", "NETHERLANDS",
-    "PORTUGAL", "RUMANIA", "OTROS PAISES DE EUROPA"];
-  function regionOf(catName){
+  /* Desglose por PAÍS (el mismo criterio de la fachada del
+     puente): las regiones genéricas eran demasiado anchas;
+     cada categoría del panel que trae un país va a SU país.
+     Lo geográfico que mezcla países (África/Asia/Oceanía,
+     «otros países de…») va a «Otros países», y lo que no trae
+     señal geográfica queda en «Variedades». */
+  var PAISES_CAT = [
+    ["ESPAÑA", "España"], ["ESPANA", "España"],
+    ["UNITED STATES", "Estados Unidos"], ["USA", "Estados Unidos"],
+    ["CANADA", "Canadá"],
+    ["UNITED KINGDOM", "Reino Unido"], ["GERMANY", "Alemania"],
+    ["FRANCE", "Francia"], ["ITALY", "Italia"],
+    ["NETHERLANDS", "Países Bajos"], ["PORTUGAL", "Portugal"],
+    ["RUMANIA", "Rumania"],
+    ["MEXICO", "México"], ["NICARAGUA", "Nicaragua"],
+    ["GUATEMALA", "Guatemala"], ["HONDURAS", "Honduras"],
+    ["EL SALVADOR", "El Salvador"], ["COSTA RICA", "Costa Rica"],
+    ["PANAMA", "Panamá"], ["COLOMBIA", "Colombia"],
+    ["VENEZUELA", "Venezuela"], ["ECUADOR", "Ecuador"],
+    ["PERU", "Perú"], ["BOLIVIA", "Bolivia"],
+    ["PARAGUAY", "Paraguay"], ["URUGUAY", "Uruguay"],
+    ["CHILE", "Chile"], ["ARGENTINA", "Argentina"],
+    ["REP DOMINICANA", "República Dominicana"],
+    ["DOMINICANA", "República Dominicana"],
+    ["PUERTO RICO", "Puerto Rico"], ["CUBA", "Cuba"],
+    ["BRASIL", "Brasil"], ["CURAZAO", "Curazao"]
+  ];
+  function countryOfCat(catName){
     var cn = clsNorm(catName), i;
-    if(cn.indexOf("USA") >= 0 || cn.indexOf("UNITED STATES") >= 0 || cn.indexOf("CANADA") >= 0) return "EE. UU. y Canadá";
-    if(cn.indexOf("ESPAÑA") >= 0 || cn.indexOf("ESPANA") === 0) return "España";
-    for(i = 0; i < EUROPA_KEYS.length; i++) if(cn.indexOf(EUROPA_KEYS[i]) >= 0) return "Europa";
-    for(i = 0; i < LATAM_KEYS.length; i++) if(cn.indexOf(LATAM_KEYS[i]) >= 0) return "Latinoamérica y el Caribe";
-    if(cn.indexOf("AFRICA") >= 0 || cn.indexOf("ASIA") >= 0 || cn.indexOf("OCEANIA") >= 0) return "Resto del mundo";
+    for(i = 0; i < PAISES_CAT.length; i++)
+      if(cn.indexOf(PAISES_CAT[i][0]) >= 0) return PAISES_CAT[i][1];
+    if(cn.indexOf("OTROS PAISES") >= 0 || cn.indexOf("AFRICA") >= 0 ||
+       cn.indexOf("ASIA") >= 0 || cn.indexOf("OCEANIA") >= 0) return "Otros países";
     return "Variedades";
+  }
+  /* El bloque geográfico mezclado se desglosa por el rótulo
+     de país que el proveedor pone al frente del nombre del
+     canal («INDIA | …», «CL: …», «RUSSIA: …»). Tabla de
+     rótulos vistos en el catálogo real → país en español. */
+  var PAISES_NOMBRE = {
+    "US": "Estados Unidos", "USA": "Estados Unidos",
+    "INDIA": "India", "CL": "Chile", "CHILE": "Chile",
+    "ES": "España", "SPAIN": "España",
+    "BR": "Brasil", "RUSSIA": "Rusia", "RUS": "Rusia",
+    "AR": "Argentina", "ARG": "Argentina", "TURKEY": "Turquía",
+    "DO": "República Dominicana", "RD": "República Dominicana",
+    "CANADA": "Canadá", "INDONESIA": "Indonesia",
+    "CO": "Colombia", "COL": "Colombia", "COLOMBIA": "Colombia",
+    "MX": "México", "MEXICO": "México",
+    "PE": "Perú", "PERU": "Perú", "COREA DEL SUR": "Corea del Sur",
+    "GUATEMALA": "Guatemala", "GT": "Guatemala", "GUA": "Guatemala",
+    "PT": "Portugal", "HONDURAS": "Honduras",
+    "EC": "Ecuador", "ECUADOR": "Ecuador", "UK": "Reino Unido",
+    "CR": "Costa Rica", "COSTA RICA": "Costa Rica",
+    "GREECE": "Grecia", "DE": "Alemania", "JAPON": "Japón",
+    "IRAN": "Irán", "ROMANIA": "Rumania", "HUNGARY": "Hungría",
+    "VENEZUELA": "Venezuela", "VE": "Venezuela",
+    "AUSTRIA": "Austria", "IRAK": "Irak", "TAILANDIA": "Tailandia",
+    "PUERTO RICO": "Puerto Rico", "EL SALVADOR": "El Salvador",
+    "PANAMA": "Panamá", "VIETNAM": "Vietnam",
+    "URUGUAY": "Uruguay", "SWISS": "Suiza", "UKRAINE": "Ucrania",
+    "NIGERIA": "Nigeria", "ARABIA SAUDITA": "Arabia Saudita",
+    "FR": "Francia", "NL": "Países Bajos", "POLAND": "Polonia",
+    "SERBIA": "Serbia", "SLOVAKIA": "Eslovaquia", "CHINA": "China",
+    "PAKISTAN": "Pakistán", "AUSTRALIA": "Australia", "IT": "Italia",
+    "CZECH": "Chequia", "MARRUECOS": "Marruecos",
+    "BOLIVIA": "Bolivia", "PARAGUAY": "Paraguay", "PY": "Paraguay",
+    "ALBANIA": "Albania", "UZBEKISTAN": "Uzbekistán",
+    "BANGLADES": "Bangladés", "COSTA DE MARFIL": "Costa de Marfil",
+    "BELGIUM": "Bélgica", "ESTONIA": "Estonia",
+    "BELARUS": "Bielorrusia", "EGIPTO": "Egipto",
+    "EAU": "Emiratos Árabes Unidos", "BULGARIA": "Bulgaria",
+    "CROATIA": "Croacia", "SUDAFRICA": "Sudáfrica",
+    "LUXEMBOURG": "Luxemburgo", "HAITI": "Haití",
+    "ARGELIA": "Argelia", "NUEVA ZELANDA": "Nueva Zelanda",
+    "BOSNIA": "Bosnia y Herzegovina", "CUBA": "Cuba",
+    "FINLAND": "Finlandia", "SLOVENIA": "Eslovenia",
+    "CAMERUN": "Camerún", "IRELAND": "Irlanda",
+    "AFGANISTAN": "Afganistán", "CW": "Curazao",
+    "NICARAGUA": "Nicaragua", "RD CONGO": "RD del Congo",
+    "TAIWAN": "Taiwán", "SWEDEN": "Suecia",
+    "FILIPINAS": "Filipinas", "ISRAEL": "Israel", "SIRIA": "Siria",
+    "DENMARK": "Dinamarca", "NORWAY": "Noruega", "UGANDA": "Uganda",
+    "BAHAMAS": "Bahamas", "BERMUDAS": "Bermudas", "KENIA": "Kenia",
+    "GHANA": "Ghana", "ANDORRA": "Andorra", "ICELAND": "Islandia",
+    "LITHUANIA": "Lituania", "CURAZAO": "Curazao",
+    "JAMAICA": "Jamaica", "ANGOLA": "Angola"
+  };
+  // Lee el rótulo de país al frente del nombre («PAÍS: …» o
+  // «PAÍS | …»). Sin rótulo reconocible devuelve "".
+  function countryOfName(name){
+    var s = String(name || ""), i = -1, k;
+    for(k = 0; k < s.length; k++){ if(s[k] === ":" || s[k] === "|"){ i = k; break; } }
+    if(i < 2 || i > 42) return "";
+    return PAISES_NOMBRE[clsNorm(s.slice(0, i))] || "";
+  }
+  // Mayúsculas sin acentos, para ordenar los países A–Z sin
+  // que el acento mande («México» con la M, «Perú» con la P).
+  function foldUpper(s){
+    return String(s || "").toUpperCase().replace(/Á/g, "A").replace(/É/g, "E")
+      .replace(/Í/g, "I").replace(/Ó/g, "O").replace(/Ú/g, "U").replace(/Ü/g, "U");
   }
   function ownCategoryOf(ch, catName){
     var cn = clsNorm(catName), i, j;
@@ -1539,7 +1633,9 @@
     for(i = 0; i < NAME_RULES.length; i++)
       for(j = 0; j < NAME_RULES[i][1].length; j++)
         if(nn.indexOf(" " + NAME_RULES[i][1][j] + " ") >= 0) return NAME_RULES[i][0];
-    return regionOf(catName);
+    var p = countryOfName(ch.name);
+    if(p) return p;
+    return countryOfCat(catName);
   }
   /* Prioridad al español (pedido de Sergio 4-nov): dentro de cada
      categoría, los canales en español salen primero en las filas y
@@ -1684,7 +1780,7 @@
     });
     var normals = master.filter(function(ch){ return !ch.isEvent && !isDeadChannel(ch); });
     return { cats: cats, channels: channels, master: master, byNumber: byNumber, catName: catName,
-             normals: normals, probedIds: null };
+             normals: normals, probedIds: (S.live && S.live.probedIds) || null };
   }
   /* Canales de la sección «Eventos del día»: la cartelera con fecha u
      hora en el nombre (es la cartelera de hoy por construcción) más
@@ -1697,7 +1793,56 @@
       if(!ch.isEvent || isDeadChannel(ch)) return;
       if(ch.dailyEvent || (S.live.probedIds && S.live.probedIds[String(ch.streamId)])) out.push(ch);
     });
-    return out;
+    return byEventPriority(out);
+  }
+  /* Prioridad DENTRO de «Eventos del día» (pedido de Sergio,
+     2026-11-20): primero la Champions con el Madrid o el Barça;
+     después la Champions; después el fútbol con el Madrid o el
+     Barça; después el fútbol; después las peleas de UFC y de
+     boxeo; el resto conserva su orden. «El Madrid» es el Real
+     Madrid: el Atlético no cuenta, y la WWE no cuenta como
+     pelea. La misma regla vive en el puente y en la app. Los
+     portadores de la UEFA («EVENTOS DISNEY+», «EVENTOS
+     FOX-ONE») cuentan como Champions también por el nombre. */
+  var EV_RE_CHAMPIONS = /CHAMPIONS|CAMPEONES|EVENTOS DISNEY|EVENTOS FOX ONE|\bUCL\b/;
+  var EV_RE_MADRID = /\bREAL MADRID\b/;
+  var EV_RE_MADRID_GEN = /\bMADRID\b/;
+  var EV_RE_ATLETI = /ATLETICO/;
+  var EV_RE_BARCA = /BARCELONA|\bBARCA\b/;
+  var EV_RE_PELEA = /\bUFC\b|\bBOXEO\b|\bBOX\b|\bMMA\b|BKFC/;
+  var EV_RE_FUTBOL = /SOCCER|\bFUTBOL\b|LALIGA|LA LIGA|PREMIER LEAGUE|BUNDESLIGA|SERIE A|SERIE B|LIGUE 1|LIGA MX|DIMAYOR|\bMLS\b|MUNDIAL|LIBERTADORES|SUDAMERICANA|EREDIVISIE|COPA DEL REY|COPA DE PORTUGAL|\bCOPA\b|EUROPA LEAGUE|CONFERENCE LEAGUE|LEAGUE ONE|LEAGUE TWO|LIGA SAUDI|LIGAPRO|LIGA PRO|PRIMERA DIVISION|PRIMERA NACIONAL|FA CUP|DFB POKAL|ELIMINATORIAS|EUROCOPA/;
+  // Clave de comparación: sin acentos ANTES de normalizar,
+  // para casar «Barça»/«Fútbol» igual que «BARCA»/«FUTBOL»
+  // (la «Ç» no está en el alfabeto de clsNorm y se perdería).
+  function evKey(s){
+    return clsNorm(String(s || "").toUpperCase().replace(/Á/g, "A").replace(/É/g, "E")
+      .replace(/Í/g, "I").replace(/Ó/g, "O").replace(/Ú/g, "U").replace(/Ü/g, "U")
+      .replace(/Ñ/g, "N").replace(/Ç/g, "C"));
+  }
+  function eventPriority(name, catName){
+    var nk = evKey(name), both = nk + " " + evKey(catName);
+    var champions = EV_RE_CHAMPIONS.test(both);
+    var madridBarca = EV_RE_MADRID.test(nk) ||
+      (EV_RE_MADRID_GEN.test(nk) && !EV_RE_ATLETI.test(nk)) ||
+      EV_RE_BARCA.test(nk);
+    var futbol = champions || EV_RE_FUTBOL.test(both);
+    if(champions && madridBarca) return 100;
+    if(champions) return 90;
+    if(futbol && madridBarca) return 80;
+    if(futbol) return 70;
+    if(EV_RE_PELEA.test(nk)) return 60;
+    return 0;
+  }
+  function eventPriorityOf(ch){
+    var cn = (S.live && S.live.catName) ? (S.live.catName[String(ch.categoryId)] || "") : "";
+    return eventPriority(ch.name, cn);
+  }
+  // Orden por prioridad descendente; el empate conserva el
+  // orden que ya traía la lista (índice explícito).
+  function byEventPriority(list){
+    return list.map(function(ch, i){ return { ch: ch, i: i, p: eventPriorityOf(ch) }; })
+      .sort(function(a, b){ return (b.p - a.p) || (a.i - b.i); })
+      .map(function(x){ return x.ch; });
   }
   function fetchDailyEvents(){
     if(S.demo) return;
@@ -1706,6 +1851,11 @@
         var set = {};
         j.ids.forEach(function(id){ set[String(id)] = 1; });
         S.live.probedIds = set;
+        // El estante de Eventos se repinta al llegar la lista,
+        // como con los apartados y la estabilidad: si no, los
+        // canales con señal de hoy entrarían solo al re-render
+        // siguiente y la fila saldría incompleta al abrir.
+        if(S.section === "live" && !S.searchActive) renderLiveRows();
       }
     }).catch(function(){});
   }
@@ -1717,7 +1867,7 @@
       var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
         var year = o.year || (o.releasedate ? String(o.releasedate).slice(0,4) : "");
         return { streamId: Number(o.stream_id)||0, name: o.name || ("Película " + o.stream_id), icon: o.stream_icon || "",
-                 categoryId: String(o.category_id), extension: o.container_extension || "mp4",
+                 categoryId: String(o.category_id), isAdult: (String(o.is_adult) === "1") ? 1 : 0, extension: o.container_extension || "mp4",
                  extra: year || (o.rating ? String(o.rating) : ""), year: nameYear(o.name), rating: parseRating(o),
                  added: parseInt(o.added, 10) || 0 };
       }).filter(function(m){ return m.streamId !== 0 && !isDeadMovie(m); });
@@ -1732,7 +1882,7 @@
       var cats = (Array.isArray(res[0]) ? res[0] : []).map(function(c){ return { id: String(c.category_id), name: cleanCatName(c.category_name || "Sin categoría") }; });
       var items = (Array.isArray(res[1]) ? res[1] : []).map(function(o){
         return { seriesId: Number(o.series_id)||0, name: o.name || ("Serie " + o.series_id), cover: o.cover || "",
-                 categoryId: String(o.category_id), year: parseInt(String(o.releaseDate || o.year || "").slice(0, 4), 10) || 0, rating: parseRating(o), added: parseEpochLoose(o.last_modified) };
+                 categoryId: String(o.category_id), genre: o.genre || "", year: parseInt(String(o.releaseDate || o.year || "").slice(0, 4), 10) || 0, rating: parseRating(o), added: parseEpochLoose(o.last_modified) };
       }).filter(function(s){ return s.seriesId !== 0 && !isDeadSerie(s); });
       S.series = { cats: cats, items: items };
       return S.series;
@@ -2684,8 +2834,7 @@
     srow.className = "search-row";
     srow.innerHTML = '<input id="live-search" type="search" placeholder="Buscar canal o programa en vivo…" autocomplete="off">' +
                      '<button id="btn-live-search" class="btn-search" type="button">Buscar</button>' +
-                     '<button id="btn-countries" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Ver por países</button>' +
-                     '<button id="btn-events" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Eventos del día</button>';
+                     '<button id="btn-countries" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Ver por países</button>';
     body.appendChild(srow);
 
     var rowsHost = document.createElement("div");
@@ -2697,7 +2846,6 @@
     body.appendChild(searchHost);
 
     $("btn-countries").addEventListener("click", renderCountries);
-    $("btn-events").addEventListener("click", renderDailyEvents);
     // La búsqueda SOLO corre al pulsar «Buscar» (o Enter): escribir no
     // filtra nada. Tras buscar, el «←» de la cabecera devuelve al
     // inicio de la sección (las filas, con el buscador vacío).
@@ -2779,8 +2927,21 @@
         S.gridReturn = "live";
       }));
     }
-    // 3) Filas por NUESTRA taxonomía (los de evento quedan fuera: solo
-    // salen en «Eventos del día» y en la búsqueda, con su distintivo)
+    // 3) Eventos del día: TERCER estante, sin botón (pedido de
+    // Sergio, 2026-11-20). La fila lleva las 20 primeras por la
+    // prioridad de siempre y «Ver más» abre la parrilla entera.
+    // No hay fila de eventos más abajo: los canales de evento
+    // no entran en las categorías (salen de S.live.normals).
+    var evs = dailyEventChannels();
+    if(evs.length){
+      host.appendChild(rowBlock("Eventos del día", evs.slice(0, 20).map(function(ch){ return channelCard(ch); }), function(){
+        openGrid({ kind: "channels", title: "Eventos del día", items: evs });
+        S.gridReturn = "live";
+      }));
+    }
+    // 4) Filas por la estructura: grupos fijos de TAXONOMY,
+    // países en orden alfabético («Otros países» cierra el
+    // bloque) y «Adultos» al final de todo.
     var byOwn = {};
     S.live.normals.forEach(function(ch){
       var b = ch.own || "Variedades";
@@ -2789,7 +2950,17 @@
     });
     // Primero los canales en español dentro de cada categoría.
     Object.keys(byOwn).forEach(function(b){ byOwn[b] = spanishFirst(byOwn[b]); });
-    TAXONOMY.forEach(function(bucket){
+    var fixedSet = {};
+    TAXONOMY.forEach(function(b){ fixedSet[b] = 1; });
+    var countries = Object.keys(byOwn).filter(function(b){ return !fixedSet[b] && b !== "Adultos"; });
+    countries.sort(function(a, b){
+      if(a === "Otros países") return 1;
+      if(b === "Otros países") return -1;
+      var fa = foldUpper(a), fb = foldUpper(b);
+      return fa < fb ? -1 : (fa > fb ? 1 : 0);
+    });
+    var rowOrder = TAXONOMY.concat(countries, ["Adultos"]);
+    rowOrder.forEach(function(bucket){
       var full = byOwn[bucket];
       if(!full || !full.length) return;
       host.appendChild(lazyRowBlock(bucket, false, function(){
@@ -2799,10 +2970,6 @@
         S.gridReturn = "live";
       }));
     });
-  }
-  function renderDailyEvents(){
-    openGrid({ kind: "channels", title: "Eventos del día", items: dailyEventChannels() });
-    S.gridReturn = "live";
   }
   function renderCountries(){
     S.section = "countries";
@@ -2868,6 +3035,78 @@
   function seriesPosterItem(s, onClick){
     return { title: s.name, poster: s.cover || "", sub: "", onClick: onClick || function(){ openSeries(s); } };
   }
+  /* Géneros de Películas y Series (orden de Sergio,
+     2026-11-20): tras el Top 10 semanal y Recientes, una fila
+     por género EN ESTE ORDEN. Sin fila «Estrenos» y sin fila
+     «Variadas»: el título que no encaja en ningún género no
+     sale en estas filas (sigue en la búsqueda, en el Top 10
+     y en Recientes si se vio). La clasificación se hace en el
+     cliente con los datos de la puerta directa: manda la
+     categoría del panel cuando ya es de género (con las
+     equivalencias de siempre: Comedia y Comedia 2 se funden,
+     «Infantiles & Animación»/«Animadas» van a «Animaciones»,
+     el estante Anime del panel va a «Anime»); en series, si
+     la categoría no es de género, manda el primer género con
+     casa de la lista de su ficha. El contenido adulto SOLO
+     vive en «Adultos». */
+  var VOD_GENRES = ["Acción", "Aventura", "Ciencia ficción", "Fantasía",
+    "Comedia", "Drama", "Romance", "Terror", "Suspenso", "Misterio",
+    "Crimen", "Policial", "Bélicas", "Históricas", "Documentales",
+    "Animaciones", "Anime", "Musicales", "Western", "Adultos"];
+  var VOD_SHELF_KEYS = [
+    ["ACCION", "Acción"], ["AVENTURA", "Aventura"],
+    ["CIENCIA FICCION", "Ciencia ficción"], ["FANTASIA", "Fantasía"],
+    ["COMEDIA", "Comedia"], ["ROMANTICAS", "Romance"],
+    ["ROMANCE", "Romance"], ["DRAMA", "Drama"], ["TERROR", "Terror"],
+    ["SUSPENSO", "Suspenso"], ["MISTERIO", "Misterio"],
+    ["CRIMEN", "Crimen"], ["BELICAS", "Bélicas"],
+    ["HISTORICAS", "Históricas"], ["POLICIAL", "Policial"],
+    ["MUSICALES", "Musicales"], ["WESTERN", "Western"],
+    ["DOCUMENT", "Documentales"], ["ANIME", "Anime"],
+    ["ANIMACION", "Animaciones"], ["ANIMADAS", "Animaciones"]
+  ];
+  function vodShelfGenre(catName){
+    var cn = foldUpper(clsNorm(catName)), i;
+    if(cn.indexOf("ADULTOS") >= 0) return "Adultos";
+    for(i = 0; i < VOD_SHELF_KEYS.length; i++)
+      if(cn.indexOf(VOD_SHELF_KEYS[i][0]) >= 0) return VOD_SHELF_KEYS[i][1];
+    return "";
+  }
+  // Género crudo de la ficha → género de la casa. Las fichas
+  // traen LISTAS («Animación, Action & Adventure, Sci-Fi &
+  // Fantasy»): se recorren en orden y manda el primero que
+  // tenga casa en la lista de Sergio.
+  var VOD_RAW_MAP = {
+    "ACTION": "Acción", "ADVENTURE": "Aventura",
+    "SCIENCE FICTION": "Ciencia ficción", "SCI FI": "Ciencia ficción",
+    "FANTASY": "Fantasía", "COMEDY": "Comedia", "DRAMA": "Drama",
+    "ROMANCE": "Romance", "HORROR": "Terror", "THRILLER": "Suspenso",
+    "SUSPENSE": "Suspenso", "MYSTERY": "Misterio", "CRIME": "Crimen",
+    "WAR": "Bélicas", "HISTORY": "Históricas", "MUSIC": "Musicales",
+    "MUSICAL": "Musicales", "WESTERN": "Western",
+    "POLICIAL": "Policial", "POLICIACO": "Policial", "SOAP": "Drama",
+    "DOCUMENTARY": "Documentales", "DOCUMENTAL": "Documentales",
+    "ANIMATION": "Animaciones", "ANIMACION": "Animaciones",
+    "ANIME": "Anime"
+  };
+  function vodRawGenre(raw){
+    if(!raw) return "";
+    var toks = String(raw).split(/[,&\/]/), i, g;
+    for(i = 0; i < toks.length; i++){
+      g = VOD_RAW_MAP[foldUpper(clsNorm(toks[i]))];
+      if(g) return g;
+    }
+    return "";
+  }
+  function vodGenreOf(it, kind, catName){
+    var g = vodShelfGenre(catName);
+    if(kind === "movies"){
+      if(it.isAdult) g = "Adultos";
+    } else if(!g){
+      g = vodRawGenre(it.genre);
+    }
+    return g;
+  }
   function renderVodSection(body, kind){
     S.searchActive = false;
     // kind: "movies" | "series"
@@ -2910,29 +3149,35 @@
       if(recCards.length){
         rowsHost.appendChild(posterRowBlock("Recientes", recCards, null));
       }
-      // Una fila por categoría, con rotación diaria
-      var byCat = {};
+      // Una fila por género de la lista de Sergio, en su
+      // orden, con rotación diaria. La clasificación es en el
+      // cliente (vodGenreOf): el título sin género no entra en
+      // ninguna fila de género.
+      var catName = {};
+      data.cats.forEach(function(c){ catName[String(c.id)] = c.name; });
+      var byGenre = {};
       items.forEach(function(it){
-        var cid = String(it.categoryId);
-        if(!byCat[cid]) byCat[cid] = [];
-        byCat[cid].push(it);
+        var g = vodGenreOf(it, kind, catName[String(it.categoryId)] || "");
+        if(!g) return;
+        if(!byGenre[g]) byGenre[g] = [];
+        byGenre[g].push(it);
       });
-      data.cats.forEach(function(cat){
-        var full = byCat[String(cat.id)];
+      VOD_GENRES.forEach(function(genre){
+        var full = byGenre[genre];
         if(!full || !full.length) return;
-        var rotated = dailyRotation(full, (kind === "movies" ? "vod-" : "series-") + cat.id, 20);
-        (function(catRef, fullList, rot){
-          rowsHost.appendChild(lazyRowBlock(catRef.name, true, function(){
+        var rotated = dailyRotation(full, (kind === "movies" ? "vod-g-" : "series-g-") + genre, 20);
+        (function(genreName, fullList, rot){
+          rowsHost.appendChild(lazyRowBlock(genreName, true, function(){
             return rot.map(function(it){
               var pi = (kind === "movies") ? moviePosterItem(it) : seriesPosterItem(it);
               return posterCard(pi, { sub: pi.sub, onClick: pi.onClick });
             });
           }, function(){
             var gis = fullList.map(function(it){ return (kind === "movies") ? moviePosterItem(it) : seriesPosterItem(it); });
-            openGrid({ kind: "posters", title: catRef.name, items: gis });
+            openGrid({ kind: "posters", title: genreName, items: gis });
             S.gridReturn = kind;
           }));
-        })(cat, full, rotated);
+        })(genre, full, rotated);
       });
     }
     buildRows();

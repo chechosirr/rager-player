@@ -2509,7 +2509,7 @@
      basta w342 (nítido en retina y mucho más ligero de decodificar). */
   function posterSrc(u){
     if(!u) return u;
-    if(u.indexOf("image.tmdb.org") >= 0) return u.replace(/\/t\/p\/[^\/]+\//, "/t/p/w342/");
+    if(u.indexOf("image.tmdb.org") >= 0) return u.replace(/^http:\/\//, "https://").replace(/\/t\/p\/[^\/]+\//, "/t/p/w342/");
     return u;
   }
   /* Pide y decodifica ya las imágenes de una fila recién construida,
@@ -4468,7 +4468,7 @@
       }
     };
     img.onerror = function(){ img.classList.add("ready"); };
-    if(src){ img.src = src; } else { img.removeAttribute("src"); }
+    if(src){ if(src.indexOf("image.tmdb.org") >= 0) src = src.replace(/^http:\/\//, "https://"); img.src = src; } else { img.removeAttribute("src"); }
   }
   function openMovieDetail(m){
     detailState.movie = m;

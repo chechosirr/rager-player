@@ -3265,8 +3265,8 @@
           rowsHost.appendChild(lazyRowBlock(genreName, true, function(){
             return rot.map(function(it){
               var pi = (kind === "movies") ? moviePosterItem(it) : seriesPosterItem(it);
-              return posterCard(pi, { sub: pi.sub, onClick: pi.onClick }).filter(Boolean);
-            });
+              return posterCard(pi, { sub: pi.sub, onClick: pi.onClick });
+            }).filter(Boolean);
           }, function(){
             var gis = fullList.map(function(it){ return (kind === "movies") ? moviePosterItem(it) : seriesPosterItem(it); });
             openGrid({ kind: "posters", title: genreName, items: gis });

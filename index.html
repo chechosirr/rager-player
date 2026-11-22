@@ -2010,6 +2010,13 @@
      la vista tenía guardada: es el «volver» de las fichas. */
   function showViewBack(id){
     showView(id);
+    // Si se vio algo desde que se armó la sección, sus filas se
+    // reconstruyen al volver: sin esto, lo recién visto no salía
+    // en Recientes hasta recargar la página (2026-11-22).
+    if(id === "view-section" && (S.section === "movies" || S.section === "series") && S.rebuildVodRows && S.vodBuiltVersion !== S.recentsVersion){
+      S.rebuildVodRows();
+      S.vodBuiltVersion = S.recentsVersion;
+    }
     var y = viewScrollMem[id] || 0;
     if(y > 0) requestAnimationFrame(function(){ window.scrollTo(0, y); });
   }
@@ -3249,6 +3256,7 @@
         if(!byGenre[g]) byGenre[g] = [];
         byGenre[g].push(it);
       });
+      var genreRows = [];
       VOD_GENRES.forEach(function(genre){
         var full = byGenre[genre];
         if(!full || !full.length) return;
@@ -3261,6 +3269,26 @@
           if(!pool.length) return;
         }
         var rotated = dailyRotation(pool, (kind === "movies" ? "vod-g-" : "series-g-") + genre, 20);
+        // Tarjetas que la fila muestra de verdad (con portada).
+        var shown = 0;
+        rotated.forEach(function(it){
+          var pi = (kind === "movies") ? moviePosterItem(it) : seriesPosterItem(it);
+          if(pi && pi.poster) shown++;
+        });
+        genreRows.push({ genre: genre, full: full, rot: rotated, shown: shown });
+      });
+      // Las categorías que no llenan los 20 puestos van al final
+      // (pedido de Sergio, 2026-11-22) y entre ellas se ordenan
+      // de más a menos tarjetas; las llenas conservan el orden
+      // de la lista de géneros (la ordenación es estable).
+      genreRows.sort(function(a, b){
+        var ga = a.shown >= 20 ? 0 : 1;
+        var gb = b.shown >= 20 ? 0 : 1;
+        if(ga !== gb) return ga - gb;
+        if(ga === 1) return b.shown - a.shown;
+        return 0;
+      });
+      genreRows.forEach(function(gr){
         (function(genreName, fullList, rot){
           rowsHost.appendChild(lazyRowBlock(genreName, true, function(){
             return rot.map(function(it){
@@ -3272,10 +3300,12 @@
             openGrid({ kind: "posters", title: genreName, items: gis });
             S.gridReturn = kind;
           }));
-        })(genre, full, rotated);
+        })(gr.genre, gr.full, gr.rot);
       });
     }
     buildRows();
+    S.vodBuiltVersion = S.recentsVersion;
+    S.rebuildVodRows = buildRows;
 
     // Igual que en canales: solo se busca al pulsar «Buscar» (o Enter)
     // y el «←» de la cabecera devuelve al inicio de la sección.

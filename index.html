@@ -103,7 +103,7 @@
 
   /* ===== Cabecera de marca (pantallas internas) ===== */
   .brandbar{display:flex; align-items:center; gap:12px; flex-wrap:wrap; row-gap:8px; padding:12px var(--pad); position:-webkit-sticky; position:sticky; top:0; z-index:30; background:rgba(16,16,20,.96); border-bottom:1px solid var(--line);}
-  .brandbar .brand{color:var(--red); font-weight:800; font-size:clamp(20px,6vw,26px); letter-spacing:.3px;}
+  .brandbar .brand{color:var(--red); font-weight:800; font-size:25px; letter-spacing:.3px;}
   .badge-demo{background:var(--red-dk); color:#fff; font-size:11px; font-weight:700; padding:3px 8px; border-radius:4px; letter-spacing:.6px; white-space:nowrap;}
   .bar-right{margin-left:auto; display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
   /* Cabecera de SECCIÓN (TV en vivo / Películas / Series): tres zonas con
@@ -116,10 +116,10 @@
      también con su «←» dentro de la cabecera. */
   .brandbar.secbar{display:grid; grid-template-columns:1fr auto 1fr; align-items:center;}
   .secbar .bar-left{display:flex; align-items:center; gap:10px; flex-wrap:wrap; row-gap:6px; justify-self:start; min-width:0;}
-  .secbar .brand{justify-self:center; text-align:center; font-size:clamp(25px,7.5vw,33px);}
+  .secbar .brand{justify-self:center; text-align:center; font-size:25px;}
   .secbar .bar-right{margin-left:0; justify-self:end;}
   @media (max-width:560px){
-    .secbar .brand{font-size:23px;}
+    .secbar .brand{font-size:25px;}
     .secbar .badge-demo{font-size:10px; padding:2px 6px;}
   }
   .chip{display:flex; align-items:center; gap:8px; background:transparent; border:1px solid transparent; border-radius:999px; padding:4px;}
@@ -180,7 +180,7 @@
   .backdrop .layer.on{opacity:1;}
   .backdrop-veil{position:absolute; inset:0; background:linear-gradient(to bottom, rgba(16,16,20,.72) 0%, rgba(16,16,20,.08) 30%, rgba(16,16,20,.08) 55%, rgba(16,16,20,.88) 100%);}
   .home-top{position:absolute; top:0; left:0; right:0; display:flex; align-items:center; gap:12px; padding:14px var(--pad); z-index:3;}
-  .home-top .brand{color:var(--red); font-weight:800; font-size:clamp(22px,6vw,28px);}
+  .home-top .brand{color:var(--red); font-weight:800; font-size:25px;}
   .home-feat{position:absolute; left:var(--pad); right:var(--pad); bottom:calc(var(--home-bar-h) + 70px); z-index:2; transition:opacity .4s ease;}
   .home-feat .kick{color:var(--red); font-weight:800; font-size:13px; letter-spacing:1.6px; margin-bottom:6px;}
   .home-feat .ftitle{font-size:var(--feat-title); font-weight:800; line-height:1.08; text-shadow:0 2px 14px rgba(0,0,0,.8); max-width:70%;}
@@ -1992,11 +1992,26 @@
   // El splash NO está en VIEWS: es una capa fija que se gestiona aparte
   // (finishSplash) para poder desvanecerse SOBRE la pantalla siguiente.
   var VIEWS = ["view-login","view-profiles","view-home","view-section","view-grid","view-episodes","view-detail","view-player"];
+  /* Memoria de posición vertical por vista: al salir de una vista
+     se guarda su scroll y «volver» desde una ficha lo restaura, para
+     dejar al usuario en el mismo punto de la lista donde estaba
+     (pedido de Sergio, 2026-11-22). */
+  var viewScrollMem = {};
   function showView(id){
+    var cur = null;
+    VIEWS.forEach(function(v){ if(!$(v).classList.contains("hidden")) cur = v; });
+    if(cur && cur !== id) viewScrollMem[cur] = window.scrollY || 0;
     VIEWS.forEach(function(v){ $(v).classList.toggle("hidden", v !== id); });
     if(id !== "view-home") stopBackdrop();
     closeProfileMenu();
     window.scrollTo(0, 0);
+  }
+  /* Como showView, pero al llegar restaura la posición vertical que
+     la vista tenía guardada: es el «volver» de las fichas. */
+  function showViewBack(id){
+    showView(id);
+    var y = viewScrollMem[id] || 0;
+    if(y > 0) requestAnimationFrame(function(){ window.scrollTo(0, y); });
   }
   function chipHTML(p){
     if(!p) return "";
@@ -2618,13 +2633,21 @@
     block.appendChild(t); block.appendChild(sc);
     return block;
   }
+  /* Si la portada existe pero no carga, la tarjeta se quita de
+     la fila/parrilla en vez de dejar el hueco con la inicial. */
+  function poImgErr(img){ var c = img.closest ? img.closest(".po-card") : null; if(c) c.remove(); }
   function posterCard(item, opts){
     opts = opts || {};
+    /* Sin portada no hay tarjeta: en filas y parrillas de
+       películas/series no se muestran títulos sin imagen
+       (pedido de Sergio, 2026-11-22). Los llamadores toleran
+       el null. */
+    if(!item.poster) return null;
     var b = document.createElement("button");
     b.type = "button"; b.className = "po-card";
     var rankHtml = opts.rank ? '<div class="porank">' + opts.rank + "</div>" : "";
     var poster = item.poster
-      ? '<div class="poster"><div class="pobox"><img src="' + esc(posterSrc(item.poster)) + '" alt="" loading="lazy" decoding="async" onerror="this.parentNode.innerHTML=\'<div class=&quot;nopo&quot;>' + esc((item.title||"R").trim().charAt(0).toUpperCase()) + '</div>\'"></div>' + rankHtml + "</div>"
+      ? '<div class="poster"><div class="pobox"><img src="' + esc(posterSrc(item.poster)) + '" alt="" loading="lazy" decoding="async" onerror="poImgErr(this)"></div>' + rankHtml + "</div>"
       : '<div class="poster"><div class="pobox"><div class="nopo">' + esc((item.title||"R").trim().charAt(0).toUpperCase()) + "</div></div>" + rankHtml + "</div>";
     var html = poster;
     /* El numeral va DENTRO de la portada, en su esquina inferior
@@ -2685,7 +2708,7 @@
       var plist = gridState.items.filter(function(it){ return !query || norm(it.title).indexOf(query) >= 0; });
       if(!plist.length){ body.innerHTML = '<div class="empty">Sin resultados.</div>'; return; }
       var pgrid = document.createElement("div"); pgrid.className = "grid-po";
-      plist.forEach(function(it){ pgrid.appendChild(posterCard(it, { sub: it.sub, onClick: it.onClick })); });
+      plist.forEach(function(it){ var c = posterCard(it, { sub: it.sub, onClick: it.onClick }); if(c) pgrid.appendChild(c); });
       body.appendChild(pgrid);
     }
   }
@@ -3204,10 +3227,8 @@
       // Top 10 semanal
       var top = top10Vod(items, kind === "movies" ? "vod-top10" : "series-top10");
       if(top.length){
-        var topCards = top.map(function(it, i){
-          var pi = (kind === "movies") ? moviePosterItem(it) : seriesPosterItem(it);
-          return posterCard(pi, { rank: i+1, sub: pi.sub, onClick: pi.onClick });
-        });
+        var topPis = top.map(function(it){ return (kind === "movies") ? moviePosterItem(it) : seriesPosterItem(it); }).filter(function(pi){ return !!pi.poster; });
+        var topCards = topPis.map(function(pi, i){ return posterCard(pi, { rank: i+1, sub: pi.sub, onClick: pi.onClick }); });
         rowsHost.appendChild(posterRowBlock("Top 10 semanal", topCards, null));
       }
       // Recientes (justo debajo del Top 10)
@@ -3244,7 +3265,7 @@
           rowsHost.appendChild(lazyRowBlock(genreName, true, function(){
             return rot.map(function(it){
               var pi = (kind === "movies") ? moviePosterItem(it) : seriesPosterItem(it);
-              return posterCard(pi, { sub: pi.sub, onClick: pi.onClick });
+              return posterCard(pi, { sub: pi.sub, onClick: pi.onClick }).filter(Boolean);
             });
           }, function(){
             var gis = fullList.map(function(it){ return (kind === "movies") ? moviePosterItem(it) : seriesPosterItem(it); });
@@ -3286,7 +3307,7 @@
       var grid = document.createElement("div"); grid.className = "grid-po";
       list.forEach(function(it){
         var pi = (kind === "movies") ? moviePosterItem(it) : seriesPosterItem(it);
-        grid.appendChild(posterCard(pi, { sub: pi.sub, onClick: pi.onClick }));
+        var pc = posterCard(pi, { sub: pi.sub, onClick: pi.onClick }); if(pc) grid.appendChild(pc);
       });
       searchHost.appendChild(grid);
       window.scrollTo(0, 0);
@@ -3310,7 +3331,7 @@
         var pi = moviePosterItem(m);
         var label = e.pos > 0 ? fmtTime(e.pos) : "";
         var prog = (e.dur && e.pos) ? (e.pos / e.dur) : 0;
-        cards.push(posterCard(pi, { sub: pi.sub, recLabel: label, progress: prog, onClick: pi.onClick }));
+        var pc1 = posterCard(pi, { sub: pi.sub, recLabel: label, progress: prog, onClick: pi.onClick }); if(pc1) cards.push(pc1);
       });
     } else {
       var bySid = {};
@@ -3321,7 +3342,7 @@
         var pi = seriesPosterItem(s, function(){ resumeEpisode(s, e); });
         var label = "T" + e.season + " · E" + e.num + (e.pos > 0 ? " — " + fmtTime(e.pos) : "");
         var prog = (e.dur && e.pos) ? (e.pos / e.dur) : 0;
-        cards.push(posterCard(pi, { recLabel: label, progress: prog, onClick: pi.onClick }));
+        var pc2 = posterCard(pi, { recLabel: label, progress: prog, onClick: pi.onClick }); if(pc2) cards.push(pc2);
       });
     }
     return cards;
@@ -3334,6 +3355,7 @@
   function openSeries(item){
     S.currentSeries = item;
     epState.item = item;
+    epState.from = ["view-home", "view-grid", "view-section"].filter(function(v){ return !$(v).classList.contains("hidden"); })[0] || "view-section";
     $("ep-title").textContent = item.name;
     // Cabecera de la vista previa: carátula grande de la serie y, cuando
     // llega la ficha del panel, descripción y metadatos.
@@ -4892,8 +4914,15 @@
   $("grid-filter").addEventListener("keydown", function(ev){
     if(ev.key === "Enter"){ ev.preventDefault(); renderGridBody(this.value); }
   });
-  $("ep-back").addEventListener("click", function(){ openSection("series"); });
-  $("detail-back").addEventListener("click", function(){ showView(detailState.from); });
+  $("ep-back").addEventListener("click", function(){
+      var from = epState.from;
+      if(from && from !== "view-episodes" && !(from === "view-section" && S.section !== "series")){
+        showViewBack(from);
+      } else {
+        openSection("series");
+      }
+    });
+  $("detail-back").addEventListener("click", function(){ showViewBack(detailState.from); });
   $("detail-play").addEventListener("click", function(){ if(detailState.movie) playMovie(detailState.movie); });
   $("btn-pback").addEventListener("click", function(){ closePlayer(); });
   initVodBar();

@@ -394,6 +394,27 @@
   #track-menu .tm-note{font-size:14px; color:#fff; padding:8px 10px; max-width:250px; line-height:1.4;}
   #track-menu button.tm-item{display:flex; width:100%; align-items:center; gap:8px; background:transparent; border:0; color:#fff; font-size:15px; text-align:left; padding:10px; border-radius:8px; cursor:pointer;}
   #track-menu button.tm-item .ck{width:18px; flex:none; color:var(--red); font-weight:800;}
+  /* Botones centrales de reproducción (pedido de Sergio 22-nov):
+     retroceder 10 s, pausar/reanudar y avanzar 10 s, en el centro del
+     video. Aparecen y desaparecen con el resto de controles: la clase
+     .show la ponen y la quitan showVodBar/hideVodBar, como la barra y
+     el track-box. En vivo no hay saltos: solo queda el de pausar. */
+  #center-box{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:7; display:flex; align-items:center; gap:26px; opacity:0; pointer-events:none; transition:opacity .3s ease;}
+  #center-box.show{opacity:1; pointer-events:auto;}
+  #center-box>button{border-radius:50%; border:0; background:rgba(0,0,0,.55); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; flex:none;}
+  #center-box>button:active{background:rgba(0,0,0,.75);}
+  #center-box .cb-seek{width:54px; height:54px;}
+  #center-box .cb-seek svg{width:30px; height:30px; display:block;}
+  #center-box #cb-play{width:66px; height:66px;}
+  #center-box #cb-play svg{width:36px; height:36px; display:block;}
+  #center-box.live-mode .cb-seek{display:none;}
+  @media (min-width:900px){
+    #center-box{gap:34px;}
+    #center-box .cb-seek{width:64px; height:64px;}
+    #center-box .cb-seek svg{width:36px; height:36px;}
+    #center-box #cb-play{width:80px; height:80px;}
+    #center-box #cb-play svg{width:44px; height:44px;}
+  }
   /* Subtítulos pintados por la propia página sobre el video (así
      funcionan igual en Safari, Chrome y con hls.js, sin depender de
      las pistas de texto del navegador). */
@@ -711,6 +732,11 @@
       <button id="btn-subs" type="button" aria-label="Subtítulos"></button>
       <button id="btn-pip" type="button" aria-label="Ventana flotante"></button>
       <div id="track-menu" class="hidden"></div>
+    </div>
+    <div id="center-box">
+      <button id="cb-back" class="cb-seek" type="button" aria-label="Retroceder 10 segundos"></button>
+      <button id="cb-play" type="button" aria-label="Pausar o reanudar"></button>
+      <button id="cb-fwd" class="cb-seek" type="button" aria-label="Avanzar 10 segundos"></button>
     </div>
     <div id="vod-cap"><span id="vod-cap-text"></span></div>
     <div id="dial"></div>
@@ -3946,11 +3972,27 @@
     // la propia barra no la oculta: solo renueva su tiempo visible.
     var box = $("video-box");
     box.addEventListener("pointerdown", function(ev){
-      if(ev.target.closest && (ev.target.closest("#vodbar") || ev.target.closest("#track-box"))){ showVodBar(); return; }
+      if(ev.target.closest && (ev.target.closest("#vodbar") || ev.target.closest("#track-box") || ev.target.closest("#center-box"))){ showVodBar(); return; }
       if($("vodbar").classList.contains("show")){ hideVodBar(); } else { showVodBar(); }
     });
     box.addEventListener("mousemove", function(){
       if(!$("vodbar").classList.contains("show")){ showVodBar(); } else { armVodBarHide(); }
+    });
+    // Botones centrales: retroceder 10 s, pausar/reanudar (el mismo
+    // gesto que el de la barra) y avanzar 10 s.
+    $("cb-back").innerHTML = CB_ICON_BACK;
+    $("cb-fwd").innerHTML = CB_ICON_FWD;
+    $("cb-play").addEventListener("click", function(){
+      if(v.paused || v.ended){ P.userPaused = false; v.play().catch(function(){}); } else { P.userPaused = true; v.pause(); }
+      showVodBar();
+    });
+    $("cb-back").addEventListener("click", function(){
+      if(P.contentDur) seekVodTo(Math.max(0, vodPosition() - 10));
+      showVodBar();
+    });
+    $("cb-fwd").addEventListener("click", function(){
+      if(P.contentDur) seekVodTo(Math.min(P.contentDur, vodPosition() + 10));
+      showVodBar();
     });
     // Botones de sonido y de horizontal de la barra (las tres secciones).
     $("vb-mute").addEventListener("click", function(){
@@ -4356,6 +4398,7 @@
   function showVodBar(){
     $("vodbar").classList.add("show");
     $("track-box").classList.add("show");
+    $("center-box").classList.add("show");
     $("view-player").classList.add("ui-show");
     syncFsButtons();
     armVodBarHide();
@@ -4364,6 +4407,7 @@
     if(P.barTimer){ clearTimeout(P.barTimer); P.barTimer = null; }
     $("vodbar").classList.remove("show");
     $("track-box").classList.remove("show");
+    $("center-box").classList.remove("show");
     $("view-player").classList.remove("ui-show");
     closeTrackMenu();
   }
@@ -4376,8 +4420,12 @@
   }
   var VB_ICON_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="#fff"/></svg>';
   var VB_ICON_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="#fff"/><rect x="14" y="5" width="4" height="14" rx="1" fill="#fff"/></svg>';
+  var CB_ICON_BACK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.2a8 8 0 1 1-7.3 5.4" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M12 1.4l-2.4 3.9 5 .5z" fill="#fff"/><text x="12" y="16.8" font-size="7.5" font-weight="700" text-anchor="middle" fill="#fff">10</text></svg>';
+  var CB_ICON_FWD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.2a8 8 0 1 0 7.3 5.4" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M12 1.4l2.4 3.9-5 .5z" fill="#fff"/><text x="12" y="16.8" font-size="7.5" font-weight="700" text-anchor="middle" fill="#fff">10</text></svg>';
   function syncVbPlay(){
-    $("vb-play").innerHTML = (videoEl().paused || videoEl().ended) ? VB_ICON_PLAY : VB_ICON_PAUSE;
+    var icon = (videoEl().paused || videoEl().ended) ? VB_ICON_PLAY : VB_ICON_PAUSE;
+    $("vb-play").innerHTML = icon;
+    $("cb-play").innerHTML = icon;
   }
   var VB_ICON_VOL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 4.2V4.8L7 9H3z" fill="#fff"/><path d="M15.8 9.2a4 4 0 0 1 0 5.6" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M18.2 6.6a7.6 7.6 0 0 1 0 10.8" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>';
   var VB_ICON_MUTE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 4.2V4.8L7 9H3z" fill="#fff"/><path d="M16.2 9.8l5 5m0-5l-5 5" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/></svg>';
@@ -4420,6 +4468,7 @@
     // hay posición que regular: en su lugar va el distintivo «EN VIVO».
     $("vodbar").classList.remove("hidden");
     $("vodbar").classList.toggle("live-mode", !isVod);
+    $("center-box").classList.toggle("live-mode", !isVod);
     videoEl().removeAttribute("controls");
     P.open = true;
     updateVodBar();

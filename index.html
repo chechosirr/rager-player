@@ -466,6 +466,21 @@
   }
   #vod-intro.teleport #intro-brand{animation:rager-teleport 1.6s ease-in both;}
   #vod-intro.bye{opacity:0; transition:opacity .5s ease;}
+/* RAGER tipo bombillo mientras carga (pedido de Sergio, 2026-11-21):
+   la palabra se enciende y se atenúa —sin desaparecer— con un
+   paso lento y progresivo de claridad a oscuridad y de vuelta,
+   mientras se espera el video; al soltar la intro
+   (.teleport/.bye) manda la salida. */
+#vod-intro.on:not(.teleport):not(.bye) #intro-brand{animation:rager-bulb 2.6s ease-in-out infinite;}
+@keyframes rager-bulb{0%{opacity:1;}50%{opacity:.14;}100%{opacity:1;}}
+/* Header del reproductor (pedido de Sergio, 2026-11-21): RAGER al
+   centro y el botón de volver a la izquierda también en la ficha
+   y en episodios (las secciones ya lo traían con .secbar), y el
+   header más bajo en todas las vistas, que no quite pantalla. */
+#view-detail .brandbar .brand, #view-episodes .brandbar .brand{position:absolute; left:50%; transform:translateX(-50%);}
+.home-top .brand{position:absolute; left:50%; transform:translateX(-50%);}
+.brandbar{padding-top:7px; padding-bottom:7px;}
+.home-top{padding-top:9px; padding-bottom:9px;}
   .video-box:fullscreen{background:#000;}
   .video-box:fullscreen video{width:100%; height:100%;}
   .video-box:-webkit-full-screen{background:#000;}
@@ -1708,6 +1723,40 @@
       }
     }).catch(function(){});
   }
+  /* Canales y películas DIRECTOS (directos.json del servidor):
+     los que se reproducen SIN conversión. Las filas de categorías
+     de Canales y las de géneros de Películas se rellenan solo con
+     estos (20 por fila), y las búsquedas los ponen primero; si no
+     hay directos, se muestra el resto (pedido de Sergio,
+     2026-11-21). Sin archivo o sin red, los conjuntos quedan
+     vacíos y no se filtra ni se reordena nada. */
+  var directLiveSet = null, directVodSet = null;
+  function fetchDirectos(){
+    if(S.demo || directLiveSet || directVodSet) return;
+    fetch(SERVER + "/directos.json").then(function(r){ return r.json(); }).then(function(j){
+      if(!j) return;
+      if(Array.isArray(j.live) && j.live.length){
+        var s1 = {};
+        j.live.forEach(function(id){ s1[String(id)] = 1; });
+        directLiveSet = s1;
+      }
+      if(Array.isArray(j.vod) && j.vod.length){
+        var s2 = {};
+        j.vod.forEach(function(id){ s2[String(id)] = 1; });
+        directVodSet = s2;
+      }
+      if(!directLiveSet && !directVodSet) return;
+      if(S.live && S.section === "live" && !S.searchActive) renderLiveRows();
+      if(S.movies && S.section === "movies" && !S.searchActive) openSection("movies");
+    }).catch(function(){});
+  }
+  // Directos primero, conservando el orden relativo de cada grupo.
+  function directFirstBy(list, set, idFn){
+    if(!set) return list;
+    var a = [], b = [];
+    list.forEach(function(x){ (set[String(idFn(x))] ? a : b).push(x); });
+    return a.concat(b);
+  }
   /* Películas y series apartadas por el monitor VOD del servidor
      (peliculas-muertos.json): el título cuyo archivo no sirve no
      sale en ninguna lista. Sin archivo o sin red, no se aparta
@@ -1761,6 +1810,7 @@
       fetchDeadChannels();
       fetchStability();
       fetchDeadVod();
+      fetchDirectos();
       return S.live;
     });
   }
@@ -1790,26 +1840,32 @@
     var out = [];
     if(!S.live) return out;
     S.live.master.forEach(function(ch){
-      if(!ch.isEvent || isDeadChannel(ch)) return;
+      if(isDeadChannel(ch)) return;
+      // ESPN Deportes va SIEMPRE en la sección y de primero (pedido
+      // de Sergio, 2026-11-21), aunque no sea canal de evento.
+      if(evKey(ch.name).indexOf("ESPN DEPORTES") >= 0){ out.push(ch); return; }
+      if(!ch.isEvent) return;
       if(ch.dailyEvent || (S.live.probedIds && S.live.probedIds[String(ch.streamId)])) out.push(ch);
     });
     return byEventPriority(out);
   }
   /* Prioridad DENTRO de «Eventos del día» (pedido de Sergio,
-     2026-11-20): primero la Champions con el Madrid o el Barça;
-     después la Champions; después el fútbol con el Madrid o el
-     Barça; después el fútbol; después las peleas de UFC y de
-     boxeo; el resto conserva su orden. «El Madrid» es el Real
-     Madrid: el Atlético no cuenta, y la WWE no cuenta como
-     pelea. La misma regla vive en el puente y en la app. Los
-     portadores de la UEFA («EVENTOS DISNEY+», «EVENTOS
-     FOX-ONE») cuentan como Champions también por el nombre. */
+     2026-11-21, ajustada el mismo día): ESPN Deportes de primero
+     de todo; después el Real Madrid; después el Barça; después
+     la Champions; después las ligas grandes de fútbol; después
+     el resto del fútbol; después las peleas de UFC y de boxeo;
+     el resto conserva su orden. «El Madrid» es el Real Madrid:
+     el Atlético no cuenta, y la WWE no cuenta como pelea. La
+     misma regla vive en el puente y en la app. Los portadores
+     de la UEFA («EVENTOS DISNEY+», «EVENTOS FOX-ONE») cuentan
+     como Champions también por el nombre. */
   var EV_RE_CHAMPIONS = /CHAMPIONS|CAMPEONES|EVENTOS DISNEY|EVENTOS FOX ONE|\bUCL\b/;
   var EV_RE_MADRID = /\bREAL MADRID\b/;
   var EV_RE_MADRID_GEN = /\bMADRID\b/;
   var EV_RE_ATLETI = /ATLETICO/;
   var EV_RE_BARCA = /BARCELONA|\bBARCA\b/;
   var EV_RE_PELEA = /\bUFC\b|\bBOXEO\b|\bBOX\b|\bMMA\b|BKFC/;
+  var EV_RE_LIGAS_GRANDES = /LALIGA|LA LIGA|PREMIER LEAGUE|BUNDESLIGA|SERIE A|LIGUE 1|LIGA MX|\bMLS\b|EREDIVISIE|LIBERTADORES|SUDAMERICANA|EUROPA LEAGUE|CONFERENCE LEAGUE|COPA DEL REY|FA CUP|DFB POKAL|MUNDIAL|ELIMINATORIAS|EUROCOPA/;
   var EV_RE_FUTBOL = /SOCCER|\bFUTBOL\b|LALIGA|LA LIGA|PREMIER LEAGUE|BUNDESLIGA|SERIE A|SERIE B|LIGUE 1|LIGA MX|DIMAYOR|\bMLS\b|MUNDIAL|LIBERTADORES|SUDAMERICANA|EREDIVISIE|COPA DEL REY|COPA DE PORTUGAL|\bCOPA\b|EUROPA LEAGUE|CONFERENCE LEAGUE|LEAGUE ONE|LEAGUE TWO|LIGA SAUDI|LIGAPRO|LIGA PRO|PRIMERA DIVISION|PRIMERA NACIONAL|FA CUP|DFB POKAL|ELIMINATORIAS|EUROCOPA/;
   // Clave de comparación: sin acentos ANTES de normalizar,
   // para casar «Barça»/«Fútbol» igual que «BARCA»/«FUTBOL»
@@ -1822,13 +1878,15 @@
   function eventPriority(name, catName){
     var nk = evKey(name), both = nk + " " + evKey(catName);
     var champions = EV_RE_CHAMPIONS.test(both);
-    var madridBarca = EV_RE_MADRID.test(nk) ||
-      (EV_RE_MADRID_GEN.test(nk) && !EV_RE_ATLETI.test(nk)) ||
-      EV_RE_BARCA.test(nk);
+    var madrid = EV_RE_MADRID.test(nk) ||
+      (EV_RE_MADRID_GEN.test(nk) && !EV_RE_ATLETI.test(nk));
+    var barca = EV_RE_BARCA.test(nk);
     var futbol = champions || EV_RE_FUTBOL.test(both);
-    if(champions && madridBarca) return 100;
+    if(nk.indexOf("ESPN DEPORTES") >= 0) return 110;
+    if(madrid) return 100;
+    if(barca) return 95;
     if(champions) return 90;
-    if(futbol && madridBarca) return 80;
+    if(EV_RE_LIGAS_GRANDES.test(both)) return 80;
     if(futbol) return 70;
     if(EV_RE_PELEA.test(nk)) return 60;
     return 0;
@@ -2833,8 +2891,7 @@
     var srow = document.createElement("div");
     srow.className = "search-row";
     srow.innerHTML = '<input id="live-search" type="search" placeholder="Buscar canal o programa en vivo…" autocomplete="off">' +
-                     '<button id="btn-live-search" class="btn-search" type="button">Buscar</button>' +
-                     '<button id="btn-countries" class="btn-ghost" type="button" style="font-size:14px; padding:12px 16px;">Ver por países</button>';
+                     '<button id="btn-live-search" class="btn-search" type="button">Buscar</button>' ;
     body.appendChild(srow);
 
     var rowsHost = document.createElement("div");
@@ -2845,7 +2902,6 @@
     searchHost.className = "grid-wrap hidden";
     body.appendChild(searchHost);
 
-    $("btn-countries").addEventListener("click", renderCountries);
     // La búsqueda SOLO corre al pulsar «Buscar» (o Enter): escribir no
     // filtra nada. Tras buscar, el «←» de la cabecera devuelve al
     // inicio de la sección (las filas, con el buscador vacío).
@@ -2885,6 +2941,7 @@
       searchHost.classList.remove("hidden");
       var query = norm(q);
       var nameList = S.live.master.filter(function(ch){ return !isDeadChannel(ch) && norm(ch.name).indexOf(query) >= 0; });
+      nameList = directFirstBy(nameList, directLiveSet, function(ch){ return ch.streamId; });
       renderLiveResults(nameList, [], query.length >= 2);
       window.scrollTo(0, 0);
       if(query.length < 2) return;
@@ -2899,7 +2956,7 @@
           var t = guideNowTitle(ch.name);
           if(t && norm(t).indexOf(query) >= 0) progList.push({ ch: ch, title: t });
         });
-        renderLiveResults(nameList, progList, false);
+        renderLiveResults(nameList, directFirstBy(progList, directLiveSet, function(p){ return p.ch.streamId; }), false);
       });
     }
     $("btn-live-search").addEventListener("click", runLiveSearch);
@@ -2963,8 +3020,17 @@
     rowOrder.forEach(function(bucket){
       var full = byOwn[bucket];
       if(!full || !full.length) return;
+      // Fila solo con directos cuando el feed llegó (pedido de
+      // Sergio, 2026-11-21): si la categoría no tiene ningún canal
+      // directo, su fila no sale en el inicio; la parrilla del
+      // «Ver más» sigue completa.
+      var pool = full;
+      if(directLiveSet){
+        pool = full.filter(function(ch){ return directLiveSet[String(ch.streamId)]; });
+        if(!pool.length) return;
+      }
       host.appendChild(lazyRowBlock(bucket, false, function(){
-        return dailyRotation(byStability(full).slice(0, 40), "live-cat-" + bucket, 20).map(function(ch){ return channelCard(ch); });
+        return dailyRotation(byStability(pool).slice(0, 40), "live-cat-" + bucket, 20).map(function(ch){ return channelCard(ch); });
       }, function(){
         openGrid({ kind: "channels", title: bucket, items: full });
         S.gridReturn = "live";
@@ -3165,7 +3231,15 @@
       VOD_GENRES.forEach(function(genre){
         var full = byGenre[genre];
         if(!full || !full.length) return;
-        var rotated = dailyRotation(full, (kind === "movies" ? "vod-g-" : "series-g-") + genre, 20);
+        // Fila de películas solo con directas cuando el feed llegó
+        // (pedido de Sergio, 2026-11-21): sin ninguna directa, la
+        // fila no sale en el inicio; la parrilla sigue completa.
+        var pool = full;
+        if(kind === "movies" && directVodSet){
+          pool = full.filter(function(it){ return directVodSet[String(it.streamId)]; });
+          if(!pool.length) return;
+        }
+        var rotated = dailyRotation(pool, (kind === "movies" ? "vod-g-" : "series-g-") + genre, 20);
         (function(genreName, fullList, rot){
           rowsHost.appendChild(lazyRowBlock(genreName, true, function(){
             return rot.map(function(it){
@@ -3200,6 +3274,7 @@
       searchHost.classList.remove("hidden");
       var query = norm(q);
       var list = items.filter(function(it){ return norm(it.name).indexOf(query) >= 0; });
+      if(kind === "movies") list = directFirstBy(list, directVodSet, function(it){ return it.streamId; });
       searchHost.innerHTML = "";
       if(!list.length){
         var e = document.createElement("div");

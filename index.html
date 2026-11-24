@@ -1930,11 +1930,14 @@
     var cn = (S.live && S.live.catName) ? (S.live.catName[String(ch.categoryId)] || "") : "";
     return eventPriority(ch.name, cn);
   }
-  // Orden por prioridad descendente; el empate conserva el
+  // Orden por prioridad descendente; DENTRO de cada nivel de
+  // la escalera mandan los canales más estables (pedido de
+  // Sergio, 2026-11-24: la escalera se conserva y la
+  // estabilidad desempata), y el empate final conserva el
   // orden que ya traía la lista (índice explícito).
   function byEventPriority(list){
     return list.map(function(ch, i){ return { ch: ch, i: i, p: eventPriorityOf(ch) }; })
-      .sort(function(a, b){ return (b.p - a.p) || (a.i - b.i); })
+      .sort(function(a, b){ return (b.p - a.p) || (stabScore(b.ch) - stabScore(a.ch)) || (a.i - b.i); })
       .map(function(x){ return x.ch; });
   }
   function fetchDailyEvents(){

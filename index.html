@@ -3111,7 +3111,11 @@
         if(!pool.length) return;
       }
       host.appendChild(lazyRowBlock(bucket, false, function(){
-        return dailyRotation(byStability(pool).slice(0, 40), "live-cat-" + bucket, 20).map(function(ch){ return channelCard(ch); });
+        // Los 20 de la fila son LOS 20 más estables de los
+        // directos de la categoría (pedido de Sergio,
+        // 2026-11-24); la rotación diaria solo cambia el
+        // orden en que se muestran esos 20, no quiénes son.
+        return dailyRotation(byStability(pool).slice(0, 20), "live-cat-" + bucket, 20).map(function(ch){ return channelCard(ch); });
       }, function(){
         // La parrilla completa, con la misma prioridad de la
         // fila: directos primero y los más estables delante

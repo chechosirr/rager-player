@@ -1867,8 +1867,9 @@
     if(!S.live) return out;
     S.live.master.forEach(function(ch){
       if(isDeadChannel(ch)) return;
-      // ESPN Deportes va SIEMPRE en la sección y de primero (pedido
-      // de Sergio, 2026-11-21), aunque no sea canal de evento.
+      // ESPN Deportes va SIEMPRE en la sección (pedido de Sergio,
+      // 2026-11-21), aunque no sea canal de evento; desde el
+      // 2026-11-24 ya no va de primero: manda la Champions.
       if(evKey(ch.name).indexOf("ESPN DEPORTES") >= 0){ out.push(ch); return; }
       if(!ch.isEvent) return;
       if(ch.dailyEvent || (S.live.probedIds && S.live.probedIds[String(ch.streamId)])) out.push(ch);
@@ -1876,20 +1877,26 @@
     return byEventPriority(out);
   }
   /* Prioridad DENTRO de «Eventos del día» (pedido de Sergio,
-     2026-11-21, ajustada el mismo día): ESPN Deportes de primero
-     de todo; después el Real Madrid; después el Barça; después
-     la Champions; después las ligas grandes de fútbol; después
-     el resto del fútbol; después las peleas de UFC y de boxeo;
-     el resto conserva su orden. «El Madrid» es el Real Madrid:
-     el Atlético no cuenta, y la WWE no cuenta como pelea. La
-     misma regla vive en el puente y en la app. Los portadores
-     de la UEFA («EVENTOS DISNEY+», «EVENTOS FOX-ONE») cuentan
-     como Champions también por el nombre. */
+     2026-11-24; sustituye a la del 2026-11-21): primero la
+     Champions (con el Madrid o el Barça delante); después la
+     Champions a secas; después la liga española (LaLiga);
+     después la liga inglesa (Premier League); después el
+     Madrid y el Barça en lo demás; después ESPN Deportes (que
+     sigue entrando siempre en la sección, pero ya no va de
+     primero); después las demás ligas grandes de fútbol;
+     después el resto del fútbol; después las peleas de UFC y
+     de boxeo; el resto conserva su orden. «El Madrid» es el
+     Real Madrid: el Atlético no cuenta, y la WWE no cuenta
+     como pelea. La misma regla vive en el puente y en la app.
+     Los portadores de la UEFA («EVENTOS DISNEY+», «EVENTOS
+     FOX-ONE») cuentan como Champions también por el nombre. */
   var EV_RE_CHAMPIONS = /CHAMPIONS|CAMPEONES|EVENTOS DISNEY|EVENTOS FOX ONE|\bUCL\b/;
   var EV_RE_MADRID = /\bREAL MADRID\b/;
   var EV_RE_MADRID_GEN = /\bMADRID\b/;
   var EV_RE_ATLETI = /ATLETICO/;
   var EV_RE_BARCA = /BARCELONA|\bBARCA\b/;
+  var EV_RE_LALIGA = /LALIGA|LA LIGA|LIGA ESPANOLA/;
+  var EV_RE_PREMIER = /PREMIER LEAGUE|LIGA INGLESA|\bEPL\b/;
   var EV_RE_PELEA = /\bUFC\b|\bBOXEO\b|\bBOX\b|\bMMA\b|BKFC/;
   var EV_RE_LIGAS_GRANDES = /LALIGA|LA LIGA|PREMIER LEAGUE|BUNDESLIGA|SERIE A|LIGUE 1|LIGA MX|\bMLS\b|EREDIVISIE|LIBERTADORES|SUDAMERICANA|EUROPA LEAGUE|CONFERENCE LEAGUE|COPA DEL REY|FA CUP|DFB POKAL|MUNDIAL|ELIMINATORIAS|EUROCOPA/;
   var EV_RE_FUTBOL = /SOCCER|\bFUTBOL\b|LALIGA|LA LIGA|PREMIER LEAGUE|BUNDESLIGA|SERIE A|SERIE B|LIGUE 1|LIGA MX|DIMAYOR|\bMLS\b|MUNDIAL|LIBERTADORES|SUDAMERICANA|EREDIVISIE|COPA DEL REY|COPA DE PORTUGAL|\bCOPA\b|EUROPA LEAGUE|CONFERENCE LEAGUE|LEAGUE ONE|LEAGUE TWO|LIGA SAUDI|LIGAPRO|LIGA PRO|PRIMERA DIVISION|PRIMERA NACIONAL|FA CUP|DFB POKAL|ELIMINATORIAS|EUROCOPA/;
@@ -1908,10 +1915,12 @@
       (EV_RE_MADRID_GEN.test(nk) && !EV_RE_ATLETI.test(nk));
     var barca = EV_RE_BARCA.test(nk);
     var futbol = champions || EV_RE_FUTBOL.test(both);
-    if(nk.indexOf("ESPN DEPORTES") >= 0) return 110;
-    if(madrid) return 100;
-    if(barca) return 95;
-    if(champions) return 90;
+    if(champions && (madrid || barca)) return 110;
+    if(champions) return 105;
+    if(EV_RE_LALIGA.test(both)) return 100;
+    if(EV_RE_PREMIER.test(both)) return 95;
+    if(madrid || barca) return 90;
+    if(nk.indexOf("ESPN DEPORTES") >= 0) return 85;
     if(EV_RE_LIGAS_GRANDES.test(both)) return 80;
     if(futbol) return 70;
     if(EV_RE_PELEA.test(nk)) return 60;

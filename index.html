@@ -4012,7 +4012,13 @@
     $("btn-audio").addEventListener("click", function(){ openTrackMenu("audio"); });
     $("btn-subs").addEventListener("click", function(){ openTrackMenu("subs"); });
     $("btn-pip").innerHTML = TB_ICON_PIP;
-    if(!pipSupported()) $("btn-pip").classList.add("hidden");
+    // El botón de ventana flotante se muestra SIEMPRE (orden de
+    // Sergio, 2026-11-24): antes se escondía cuando la sonda
+    // (pipSupported) decía que el sistema no la admitía — en la
+    // práctica, al abrir la página desde el icono de la pantalla
+    // de inicio del iPhone — y Sergio lo echó en falta. Donde
+    // Apple la bloquee, tocarlo no hará nada (togglePip falla en
+    // silencio), pero el botón queda a la vista.
     $("btn-pip").addEventListener("click", function(){ togglePip(); showVodBar(); });
     v.addEventListener("webkitpresentationmodechanged", syncPipButton);
     document.addEventListener("enterpictureinpicture", syncPipButton);

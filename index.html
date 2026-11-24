@@ -1783,6 +1783,19 @@
     list.forEach(function(x){ (set[String(idFn(x))] ? a : b).push(x); });
     return a.concat(b);
   }
+  /* Canales directos primero y, DENTRO de los directos, los
+     más estables primero (pedido de Sergio, 2026-11-24: vale
+     para las parrillas y para las búsquedas, en Rager y en
+     VivaPlayer). El resto conserva su orden. chFn saca el
+     canal de cada elemento (en los resultados por programa el
+     elemento es una pareja {ch, title}). */
+  function directStableFirstBy(list, set, idFn, chFn){
+    if(!set) return list;
+    var a = [], b = [];
+    list.forEach(function(x, i){ (set[String(idFn(x))] ? a : b).push({ x: x, i: i }); });
+    a.sort(function(p, q){ return (stabScore(chFn(q.x)) - stabScore(chFn(p.x))) || (p.i - q.i); });
+    return a.map(function(o){ return o.x; }).concat(b.map(function(o){ return o.x; }));
+  }
   /* Películas y series apartadas por el monitor VOD del servidor
      (peliculas-muertos.json): el título cuyo archivo no sirve no
      sale en ninguna lista. Sin archivo o sin red, no se aparta
@@ -3009,7 +3022,7 @@
       searchHost.classList.remove("hidden");
       var query = norm(q);
       var nameList = S.live.master.filter(function(ch){ return !isDeadChannel(ch) && norm(ch.name).indexOf(query) >= 0; });
-      nameList = directFirstBy(nameList, directLiveSet, function(ch){ return ch.streamId; });
+      nameList = directStableFirstBy(nameList, directLiveSet, function(ch){ return ch.streamId; }, function(ch){ return ch; });
       renderLiveResults(nameList, [], query.length >= 2);
       window.scrollTo(0, 0);
       if(query.length < 2) return;
@@ -3024,7 +3037,7 @@
           var t = guideNowTitle(ch.name);
           if(t && norm(t).indexOf(query) >= 0) progList.push({ ch: ch, title: t });
         });
-        renderLiveResults(nameList, directFirstBy(progList, directLiveSet, function(p){ return p.ch.streamId; }), false);
+        renderLiveResults(nameList, directStableFirstBy(progList, directLiveSet, function(p){ return p.ch.streamId; }, function(p){ return p.ch; }), false);
       });
     }
     $("btn-live-search").addEventListener("click", runLiveSearch);
@@ -3100,7 +3113,10 @@
       host.appendChild(lazyRowBlock(bucket, false, function(){
         return dailyRotation(byStability(pool).slice(0, 40), "live-cat-" + bucket, 20).map(function(ch){ return channelCard(ch); });
       }, function(){
-        openGrid({ kind: "channels", title: bucket, items: full });
+        // La parrilla completa, con la misma prioridad de la
+        // fila: directos primero y los más estables delante
+        // dentro de los directos (2026-11-24).
+        openGrid({ kind: "channels", title: bucket, items: directStableFirstBy(full, directLiveSet, function(ch){ return ch.streamId; }, function(ch){ return ch; }) });
         S.gridReturn = "live";
       }));
     });

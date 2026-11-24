@@ -3770,6 +3770,14 @@
   }
   function syncPipButton(){
     $("btn-pip").classList.toggle("on", inPip());
+    // En flotante, los motores por javascript (hls.js: Chrome,
+    // Android, escritorio) cargan con mucho más colchón: con la
+    // página en segundo plano sus temporizadores van a tirones
+    // y un atasco se nota en seguida si el colchón es corto.
+    // En Safari el motor es el del sistema y no hay nada que
+    // ajustar aquí. Al salir de flotante vuelve el colchón de
+    // siempre (30 s).
+    if(hls && hls.config){ try{ hls.config.maxBufferLength = inPip() ? 90 : 30; }catch(e){} }
   }
   function togglePip(){
     var v = videoEl();
@@ -4277,7 +4285,14 @@
   }
   function watchdogTick(){
     var v = videoEl();
-    if(!P.open || document.hidden) return;
+    if(!P.open) return;
+    // Con el video en ventana flotante la página queda «oculta»
+    // pero el video sigue sonando fuera: el vigía SÍ trabaja en
+    // flotante (pedido de Sergio, 2026-11-24: «se para mucho»).
+    // Antes se retiraba al ocultarse la página y cualquier
+    // atasco en flotante se quedaba congelado hasta que Sergio
+    // volvía a la página, que era cuando se recuperaba solo.
+    if(document.hidden && !inPip()) return;
     /* Respaldo FORZADO a la señal convertida en canales (4-nov): hay
        dos casos en los que el aviso de error del elemento de video no
        llega o llega tarde y el canal se quedaba en el error 3 de la

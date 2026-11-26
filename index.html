@@ -587,25 +587,37 @@
   footer.site{color:var(--mut); font-size:12px; text-align:center; padding:20px 16px 30px; line-height:1.6;}
 
   /* ===== Favoritos (previa 2026-11-25) ===== */
-  .fav-actions{display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:20px;}
+  /* Favoritos va DEBAJO de «Ver ahora», en su propia línea (Sergio 2026-11-25). */
+  .fav-actions{display:flex; flex-direction:column; gap:10px; align-items:stretch; width:fit-content; margin-top:20px;}
   .fav-actions .detail-play{margin-top:0;}
-  .btn-fav{display:inline-flex; align-items:center; gap:9px; background:rgba(255,255,255,.06); color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:13px 22px; font-size:16px; cursor:pointer;}
-  .btn-fav svg{width:20px; height:20px; flex:none;}
+  /* El botón de favoritos mide EXACTAMENTE el mismo ancho que «Ver ahora»
+     (Sergio 2026-11-25): el contenedor se ajusta al botón principal y el de
+     favoritos, con width:0 + min-width:100%, no aporta ancho propio y se
+     estira a ese mismo ancho — gemelos en largura, sin número fijo. */
+  .fav-actions .btn-fav{width:0; min-width:100%; justify-content:center; box-sizing:border-box; white-space:nowrap; padding-left:8px; padding-right:8px;}
+  /* Botón de favoritos secundario y pequeño (Sergio 2026-11-25): no debe
+     opacar a «Ver ahora», que sigue siendo el botón principal de la ficha. */
+  .btn-fav{display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,.03); color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:9px 14px; font-size:13px; cursor:pointer; min-height:40px;}
+  .btn-fav svg{width:15px; height:15px; flex:none;}
   .btn-fav .fav-heart{fill:none; stroke:#fff; stroke-width:2;}
-  .btn-fav.on{border-color:var(--red); background:rgba(229,9,20,.14);}
+  .btn-fav.on{border-color:var(--red); background:rgba(229,9,20,.10);}
   .btn-fav.on .fav-heart{fill:var(--red); stroke:var(--red);}
   #view-episodes .btn-fav{margin:16px 0 4px;}
+  /* En series, el botón de favoritos va EN LA MISMA FILA que el chip de
+     temporada, junto a él (Sergio 2026-11-25): el JS lo mueve dentro de
+     .season-chips, tras los chips, y ahí pierde su margen propio y se
+     centra en la fila. Conserva su tamaño discreto de siempre. */
+  #view-episodes .season-chips .btn-fav{margin:0; align-self:center;}
   .fav-wrap{padding:18px var(--pad) 70px;}
   .fav-block-title{font-size:22px; font-weight:800; margin:28px 0 14px;}
   .fav-empty{color:var(--mut); font-size:15px; padding:4px 0 8px;}
   @media (min-width:900px){
     #view-detail .fav-actions{grid-column:1; grid-row:4; z-index:2; justify-self:start; margin:26px var(--pad) 52px;}
     #view-detail .fav-actions .detail-play{margin:0; font-size:20px; padding:17px 44px;}
-    #view-detail .fav-actions .btn-fav{font-size:17px; padding:16px 26px;}
-    #view-episodes .ep-wrap{grid-template-rows:minmax(320px,52vh) auto auto auto auto 1fr;}
-    #view-episodes .btn-fav{grid-column:1; grid-row:4; z-index:2; justify-self:start; margin:28px var(--pad) 0;}
-    #view-episodes .season-chips{grid-row:5;}
-    #view-episodes #ep-list{grid-row:6;}
+    #view-detail .fav-actions .btn-fav{font-size:14px; padding:10px 18px;}
+    /* Episodios en escritorio: el botón de favoritos ya no ocupa fila propia;
+       vive dentro de la fila de .season-chips (fila 4) y la lista vuelve a
+       la fila 5, como en el bloque cinematográfico. */
   }
   @media (min-width:1400px){
     #view-detail .fav-actions .detail-play{font-size:23px; padding:20px 54px;}
@@ -3701,6 +3713,11 @@
       });
     }
     paintFavButton($("ep-fav"), isFavorite("series", item.seriesId));
+    /* El botón de favoritos puede venir dentro de .season-chips (de una
+       visita anterior): se rescata a su sitio original antes de vaciar los
+       chips, porque innerHTML = "" lo destruiría. */
+    var epFavBtn = $("ep-fav");
+    if(epFavBtn && epFavBtn.parentNode === $("ep-seasons")) $("ep-seasons").parentNode.insertBefore(epFavBtn, $("ep-seasons"));
     $("ep-seasons").innerHTML = "";
     $("ep-list").innerHTML = '<div class="loading">Cargando episodios…</div>';
     renderChips();
@@ -3726,6 +3743,10 @@
         });
         chips.appendChild(b);
       });
+      /* Favoritos va en la misma fila que los chips de temporada, tras
+         ellos (Sergio 2026-11-25): se mueve el botón dentro de la fila. */
+      var epFavBtn2 = $("ep-fav");
+      if(epFavBtn2) chips.appendChild(epFavBtn2);
       renderEpisodeList();
     }).catch(function(){
       $("ep-list").innerHTML = '<div class="empty">' + esc(MSG_BLOCKED) + "</div>";

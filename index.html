@@ -8,7 +8,7 @@
 <script src="hls.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500&family=Nunito:wght@800;900&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#101014; --panel:#1a1a21; --panel2:#22222c; --line:#2c2c38;
@@ -62,7 +62,12 @@
   .msg.err{display:block; background:#3a1416; border:1px solid #7a2027; color:#ffb4ab;}
   .msg.info{display:block; background:#2a2410; border:1px solid #6b5a17; color:#ffe082;}
   .btn-ghost{background:transparent; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:13px; white-space:nowrap;}
-  #sec-back,#grid-back,#ep-back,#detail-back,#btn-pback{padding-left:20px; padding-right:20px;}
+  /* Flecha de «volver» con UNA sola medida en todas las vistas (sección,
+     parrilla, episodios, ficha, reproductor y Favoritos): la de las
+     secciones principales — glifo 13px y relleno 8px 20px (caja 55×33).
+     Favoritos quedaba fuera de esta regla y su flecha salía más estrecha
+     (39×33); pedido de Sergio, 2026-11-25. */
+  #sec-back,#grid-back,#ep-back,#detail-back,#fav-back,#btn-pback{padding-left:20px; padding-right:20px;}
   .btn-ghost:hover{border-color:var(--red);}
   .loading{text-align:center; color:var(--mut); padding:44px 10px; font-size:15px;}
   .empty{color:var(--mut); text-align:center; padding:40px 10px; font-size:15px; line-height:1.6;}
@@ -128,11 +133,70 @@
   .chip .cname{font-size:15px; max-width:var(--cname-w); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .chip .car{font-size:11px; color:var(--mut); margin-left:1px;}
 
-  /* ===== Menú desplegable del perfil ===== */
-  .pmenu{position:fixed; z-index:200; min-width:216px; max-width:calc(100vw - 16px); background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:6px; box-shadow:0 16px 44px rgba(0,0,0,.6);}
+  /* ===== Menú desplegable del perfil =====
+     Despliegue copiado del menú ☰ de ragerservices.net (pedido de
+     Sergio 25-nov): velo a pantalla completa que entra con un fundido
+     de .32s (opacity/visibility), los renglones suben 12px al entrar,
+     botón × arriba a la derecha, cierre al tocar el velo o con Esc y
+     la página de detrás sin scroll mientras está abierto. En móvil
+     (≤760px, igual que el sitio) el velo es rgba(0,0,0,.78) y los
+     renglones van en un panel lateral derecho oscuro de
+     min(72vw,290px) a todo el alto; en pantalla grande el velo es
+     rgba(2,4,7,.98) y los renglones van centrados. */
+  #profile-menu{display:flex !important;}
+  .pmenu{position:fixed; inset:0; z-index:200; align-items:center; justify-content:center; background:rgba(2,4,7,.98); padding:30px; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .32s ease, visibility 0s linear .32s;}
+  .pmenu:not(.hidden){opacity:1; visibility:visible; pointer-events:auto; transition:opacity .32s ease;}
+  .pmenu-drawer{position:relative;}
+  .pmenu-links{display:flex; flex-direction:column; gap:6px; align-items:center; transform:translateY(12px); transition:transform .32s ease;}
+  .pmenu:not(.hidden) .pmenu-links{transform:translateY(0);}
+  .pmenu-links .pmenu-item{text-align:center; width:auto;}
+  .pmenu-close{position:absolute; right:max(35px,env(safe-area-inset-right)); top:max(35px,env(safe-area-inset-top)); width:54px; height:54px; border:1px solid #fff; background:transparent; color:#fff; font-size:34px; line-height:1; cursor:pointer; z-index:1;}
+  .pmenu-close:hover,.pmenu-close:focus-visible{background:var(--panel2); outline:none;}
+  @media(max-width:760px){
+    .pmenu{align-items:stretch; justify-content:flex-end; padding:0; background:rgba(0,0,0,.78);}
+    .pmenu-drawer{width:min(72vw,290px); min-height:100vh; min-height:100dvh; padding:78px 18px 38px; background:#030609; box-shadow:-16px 0 44px rgba(0,0,0,.6); overflow-y:auto;}
+    .pmenu-links{align-items:stretch;}
+    .pmenu-links .pmenu-item{text-align:left; width:100%;}
+    .pmenu-close{right:max(12px,env(safe-area-inset-right)); top:max(12px,env(safe-area-inset-top)); width:42px; height:42px; font-size:28px;}
+  }
   .pmenu-item{display:block; width:100%; text-align:left; background:transparent; border:none; color:var(--txt); font-size:15px; padding:11px 12px; border-radius:8px; cursor:pointer;}
   .pmenu-item:hover,.pmenu-item:focus-visible{background:var(--panel2); outline:none;}
   .pmenu-item.danger{color:#ff5252; font-weight:700;}
+
+  /* Tipografía del menú = la del menú de ragerservices.net (pedido de
+     Sergio 25-nov: «el mismo tipo de letra»; medida EN VIVO con estilos
+     computados): familia Copperplate, "Copperplate Gothic Light",
+     "Copperplate Gothic", Cinzel, serif; color #f8f8fa; sin mayúsculas
+     forzadas ni espaciado entre letras; interlineado 1.42 (el del body
+     del sitio). Escritorio: clamp(36px,6vw,78px), peso 900, hueco de
+     30px entre renglones. Móvil (≤760px): clamp(22px,6vw,29px), peso
+     400, hueco de 28px. «Cerrar sesión» conserva su rojo, con la misma
+     letra. La Cinzel se carga arriba con los mismos pesos que el sitio
+     (400;500); en aparatos Apple manda Copperplate, igual que allí. */
+  .pmenu-links{gap:30px;}
+  .pmenu-drawer{max-height:100vh; max-height:100dvh; overflow-y:auto;}
+  .pmenu-links .pmenu-item{font-family:Copperplate,"Copperplate Gothic Light","Copperplate Gothic",Cinzel,serif; font-size:clamp(36px,6vw,78px); font-weight:900; line-height:1.42; letter-spacing:normal; text-transform:none; color:#f8f8fa; padding:6px 0;}
+  .pmenu-links .pmenu-item.danger{color:#ff5252;}
+  @media(max-width:760px){
+    .pmenu-links{gap:28px;}
+    .pmenu-links .pmenu-item{font-size:clamp(22px,6vw,29px); font-weight:400;}
+  }
+
+  /* Botón que abre el menú: TRES RAYAS como el ☰ de ragerservices.net
+     (pedido de Sergio 25-nov; medido en vivo): botón transparente, sin
+     borde ni fondo ni caja, 58×58 en escritorio y 48×48 en móvil
+     (≤760px), con tres líneas blancas de 32×2px (27×2px en móvil)
+     separadas 7px. Sustituye al círculo con la inicial del usuario en
+     la esquina superior derecha de cada cabecera; la inicial no se
+     mueve a ningún otro sitio (el menú del sitio tampoco la muestra). */
+  .bar-right .chip{width:58px; height:58px; padding:0; border:0; background:transparent; border-radius:0; display:grid; place-content:center;}
+  .bar-right .chip:hover{border-color:transparent; background:transparent;}
+  .chip .mbars{display:grid; gap:7px;}
+  .chip .mbars i{display:block; width:32px; height:2px; background:#fff;}
+  @media(max-width:760px){
+    .bar-right .chip{width:48px; height:48px;}
+    .chip .mbars i{width:27px;}
+  }
 
   /* ===== Modal de soporte (PC / TV) ===== */
   .support-modal{position:relative; text-align:center;}
@@ -521,6 +585,31 @@
     font-weight:900; text-transform:uppercase; letter-spacing:-.02em;
   }
   footer.site{color:var(--mut); font-size:12px; text-align:center; padding:20px 16px 30px; line-height:1.6;}
+
+  /* ===== Favoritos (previa 2026-11-25) ===== */
+  .fav-actions{display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:20px;}
+  .fav-actions .detail-play{margin-top:0;}
+  .btn-fav{display:inline-flex; align-items:center; gap:9px; background:rgba(255,255,255,.06); color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:13px 22px; font-size:16px; cursor:pointer;}
+  .btn-fav svg{width:20px; height:20px; flex:none;}
+  .btn-fav .fav-heart{fill:none; stroke:#fff; stroke-width:2;}
+  .btn-fav.on{border-color:var(--red); background:rgba(229,9,20,.14);}
+  .btn-fav.on .fav-heart{fill:var(--red); stroke:var(--red);}
+  #view-episodes .btn-fav{margin:16px 0 4px;}
+  .fav-wrap{padding:18px var(--pad) 70px;}
+  .fav-block-title{font-size:22px; font-weight:800; margin:28px 0 14px;}
+  .fav-empty{color:var(--mut); font-size:15px; padding:4px 0 8px;}
+  @media (min-width:900px){
+    #view-detail .fav-actions{grid-column:1; grid-row:4; z-index:2; justify-self:start; margin:26px var(--pad) 52px;}
+    #view-detail .fav-actions .detail-play{margin:0; font-size:20px; padding:17px 44px;}
+    #view-detail .fav-actions .btn-fav{font-size:17px; padding:16px 26px;}
+    #view-episodes .ep-wrap{grid-template-rows:minmax(320px,52vh) auto auto auto auto 1fr;}
+    #view-episodes .btn-fav{grid-column:1; grid-row:4; z-index:2; justify-self:start; margin:28px var(--pad) 0;}
+    #view-episodes .season-chips{grid-row:5;}
+    #view-episodes #ep-list{grid-row:6;}
+  }
+  @media (min-width:1400px){
+    #view-detail .fav-actions .detail-play{font-size:23px; padding:20px 54px;}
+  }
 </style>
 </head>
 <body>
@@ -680,6 +769,7 @@
     <div id="ep-hero" class="detail-hero hidden"><img id="ep-hero-img" alt=""></div>
     <div id="ep-meta" class="detail-meta hidden"></div>
     <p id="ep-plot" class="detail-plot hidden"></p>
+    <button id="ep-fav" class="btn-fav" type="button"></button>
     <div id="ep-seasons" class="season-chips"></div>
     <div id="ep-list"></div>
   </div>
@@ -702,8 +792,31 @@
     <div class="detail-hero"><img id="detail-img" alt=""></div>
     <div id="detail-meta" class="detail-meta"></div>
     <p id="detail-plot" class="detail-plot"></p>
-    <button id="detail-play" class="btn-search detail-play" type="button">▶ Ver ahora</button>
+    <div class="fav-actions">
+      <button id="detail-play" class="btn-search detail-play" type="button">▶ Ver ahora</button>
+      <button id="detail-fav" class="btn-fav" type="button"></button>
+    </div>
   </div>
+</section>
+
+
+<!-- ================= FAVORITOS ================= -->
+<section id="view-favorites" class="hidden">
+  <div class="brandbar secbar">
+    <div class="bar-left">
+      <button id="fav-back" class="btn-ghost" type="button" aria-label="Volver">←</button>
+      <span id="fav-demo-badge" class="badge-demo hidden">MODO DEMO</span>
+    </div>
+    <div class="brand">Rager</div>
+    <div class="bar-right">
+      <button id="fav-chip" class="chip" type="button" aria-haspopup="menu" aria-expanded="false"></button>
+    </div>
+  </div>
+  <div class="fav-wrap">
+    <div class="sec-title">Favoritos</div>
+    <div id="fav-body"></div>
+  </div>
+  <footer class="site">Rager · Las señales dependen de tu conexión a internet.</footer>
 </section>
 
 <!-- ================= REPRODUCTOR ================= -->
@@ -767,14 +880,19 @@
 
 <!-- ================= MENÚ DESPLEGABLE DEL PERFIL ================= -->
 <div id="profile-menu" class="pmenu hidden" role="menu">
-  <button id="pm-switch" class="pmenu-item" type="button" role="menuitem">Cambiar de usuario</button>
-  <button id="pm-account" class="pmenu-item" type="button" role="menuitem">Mi cuenta</button>
-  <button id="pm-support" class="pmenu-item" type="button" role="menuitem">Contactar a soporte</button>
-  <button id="pm-help" class="pmenu-item rg-chat-open rg-chat-ayuda" type="button" role="menuitem">Ayuda</button>
-  <button id="pm-hist" class="pmenu-item rg-chat-hist" type="button" role="menuitem">Mis chats</button>
-  <button id="pm-panel" class="pmenu-item hidden" type="button" role="menuitem">Panel</button>
-  <button id="pm-chat" class="pmenu-item hidden" type="button" role="menuitem">Chat</button>
-  <button id="pm-logout" class="pmenu-item danger" type="button" role="menuitem">Cerrar sesión</button>
+  <button id="pm-close" class="pmenu-close" type="button" aria-label="Cerrar menú">×</button>
+  <div class="pmenu-drawer">
+    <nav class="pmenu-links">
+      <button id="pm-switch" class="pmenu-item" type="button" role="menuitem">Cambiar de usuario</button>
+      <button id="pm-favorites" class="pmenu-item" type="button" role="menuitem">Favoritos</button>
+      <button id="pm-account" class="pmenu-item" type="button" role="menuitem">Mi cuenta</button>
+      <button id="pm-hist" class="pmenu-item rg-chat-hist" type="button" role="menuitem">Mis chats</button>
+      <button id="pm-help" class="pmenu-item rg-chat-open rg-chat-ayuda" type="button" role="menuitem">Ayuda</button>
+      <button id="pm-panel" class="pmenu-item hidden" type="button" role="menuitem">Panel</button>
+      <button id="pm-chat" class="pmenu-item hidden" type="button" role="menuitem">Chat</button>
+      <button id="pm-logout" class="pmenu-item danger" type="button" role="menuitem">Cerrar sesión</button>
+    </nav>
+  </div>
 </div>
 
 <!-- ================= MODAL DE SOPORTE (PC / TV) ================= -->
@@ -1314,6 +1432,111 @@
       if(keyOf(list[i]) === key){ list[i].pos = pos; if(dur && isFinite(dur)) list[i].dur = dur; break; }
     }
     writeRecents(section, list);
+  }
+
+  /* ================================================================
+     Favoritos (previa 2026-11-25): locales de este aparato, por
+     cuenta y por perfil — el mismo patrón que «Recientes», sin
+     tocar el servidor. Se guarda lo justo para reconstruir la
+     tarjeta: id, título, portada, nota y año.
+     ================================================================ */
+  var FAV_HEART = '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="fav-heart" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
+  function favoritesKey(){ return S.demo ? "rager_favorites_demo" : (S.user ? "rager_favorites" + acctSuffix() : "rager_favorites"); }
+  function favPid(){ return S.profile ? String(S.profile.id) : "0"; }
+  function loadFavoritesAll(){ var r = lsGet(favoritesKey()); return (r && typeof r === "object") ? r : {}; }
+  function favoritesOf(){
+    var mine = loadFavoritesAll()[favPid()] || {};
+    return { movies: Array.isArray(mine.movies) ? mine.movies : [], series: Array.isArray(mine.series) ? mine.series : [] };
+  }
+  function writeFavorites(fav){
+    var all = loadFavoritesAll();
+    all[favPid()] = { movies: fav.movies || [], series: fav.series || [] };
+    lsSet(favoritesKey(), all);
+  }
+  function isFavorite(type, id){
+    return favoritesOf()[type].some(function(e){ return String(e.id) === String(id); });
+  }
+  function toggleFavorite(type, entry){
+    var fav = favoritesOf();
+    var list = fav[type];
+    var i = -1;
+    list.forEach(function(e, j){ if(String(e.id) === String(entry.id)) i = j; });
+    if(i >= 0) list.splice(i, 1); else list.unshift(entry);
+    fav[type] = list;
+    writeFavorites(fav);
+    return i < 0;
+  }
+  function paintFavButton(btn, on){
+    if(!btn) return;
+    btn.classList.toggle("on", !!on);
+    btn.innerHTML = FAV_HEART + "<span>" + (on ? "En favoritos" : "Agregar a favoritos") + "</span>";
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  function movieFavEntry(m){ return { id: m.streamId, title: m.name, poster: m.icon || "", rating: m.rating || 0, year: m.year || 0 }; }
+  function seriesFavEntry(s){ return { id: s.seriesId, title: s.name, poster: s.cover || "", rating: s.rating || 0, year: s.year || 0 }; }
+  function favSub(e){
+    var parts = [];
+    if(e.year) parts.push(String(e.year));
+    if(e.rating) parts.push("★ " + Number(e.rating).toFixed(1));
+    return parts.join(" · ");
+  }
+  function openFavorites(){
+    renderChips();
+    renderFavorites();
+    showView("view-favorites");
+    var need = [];
+    if(!S.movies) need.push(loadMoviesData());
+    if(!S.series) need.push(loadSeriesData());
+    if(need.length) Promise.all(need).then(function(){
+      if(!$("view-favorites").classList.contains("hidden")) renderFavorites();
+    }).catch(function(){});
+  }
+  function renderFavorites(){
+    var body = $("fav-body");
+    if(!body) return;
+    body.innerHTML = "";
+    var fav = favoritesOf();
+    function findFull(type, en){
+      var items = type === "movies" ? (S.movies && S.movies.items) : (S.series && S.series.items);
+      if(!items) return null;
+      var key = type === "movies" ? "streamId" : "seriesId";
+      var hit = null;
+      items.forEach(function(it){ if(String(it[key]) === String(en.id)) hit = it; });
+      return hit;
+    }
+    function block(type, label, emptyText){
+      var t = document.createElement("div");
+      t.className = "fav-block-title"; t.textContent = label;
+      body.appendChild(t);
+      var list = fav[type];
+      if(!list.length){
+        var e = document.createElement("div");
+        e.className = "fav-empty"; e.textContent = emptyText;
+        body.appendChild(e);
+        return;
+      }
+      var grid = document.createElement("div");
+      grid.className = "grid-po";
+      list.forEach(function(en){
+        var full = findFull(type, en);
+        var item = full
+          ? (type === "movies" ? moviePosterItem(full) : seriesPosterItem(full))
+          : { title: en.title, poster: en.poster, sub: "", onClick: function(){} };
+        var card = posterCard(item, { sub: favSub(en), onClick: function(){
+          var f2 = findFull(type, en);
+          if(f2){ if(type === "movies") openMovieDetail(f2); else openSeries(f2); return; }
+          var load = type === "movies" ? loadMoviesData() : loadSeriesData();
+          load.then(function(){
+            var f3 = findFull(type, en);
+            if(f3){ if(type === "movies") openMovieDetail(f3); else openSeries(f3); }
+          }).catch(function(){});
+        }});
+        if(card) grid.appendChild(card);
+      });
+      body.appendChild(grid);
+    }
+    block("movies", "Películas", "Aún no tienes películas favoritas.");
+    block("series", "Series", "Aún no tienes series favoritas.");
   }
 
   /* ================================================================
@@ -2042,7 +2265,7 @@
      ================================================================ */
   // El splash NO está en VIEWS: es una capa fija que se gestiona aparte
   // (finishSplash) para poder desvanecerse SOBRE la pantalla siguiente.
-  var VIEWS = ["view-login","view-profiles","view-home","view-section","view-grid","view-episodes","view-detail","view-player"];
+  var VIEWS = ["view-login","view-profiles","view-home","view-section","view-grid","view-episodes","view-detail","view-player","view-favorites"];
   /* Memoria de posición vertical por vista: al salir de una vista
      se guarda su scroll y «volver» desde una ficha lo restaura, para
      dejar al usuario en el mismo punto de la lista donde estaba
@@ -2053,6 +2276,7 @@
     VIEWS.forEach(function(v){ if(!$(v).classList.contains("hidden")) cur = v; });
     if(cur && cur !== id) viewScrollMem[cur] = window.scrollY || 0;
     VIEWS.forEach(function(v){ $(v).classList.toggle("hidden", v !== id); });
+    if(id === "view-favorites") renderFavorites();
     if(id !== "view-home") stopBackdrop();
     closeProfileMenu();
     window.scrollTo(0, 0);
@@ -2073,13 +2297,15 @@
   }
   function chipHTML(p){
     if(!p) return "";
-    return '<span class="ava" style="background:' + profileColor(p) + '">' + esc(profileInitial(p)) + '</span>';
+    // Tres rayas (☰) como el botón del menú de ragerservices.net: la
+    // inicial del usuario ya no aparece en la esquina (25-nov).
+    return '<span class="mbars" aria-hidden="true"><i></i><i></i><i></i></span>';
   }
   function renderChips(){
     var html = chipHTML(S.profile);
-    ["home-chip","sec-chip","grid-chip","ep-chip","detail-chip"].forEach(function(id){ $(id).innerHTML = html; });
+    ["home-chip","sec-chip","grid-chip","ep-chip","detail-chip","fav-chip"].forEach(function(id){ var b = $(id); b.innerHTML = html; b.setAttribute("aria-label", "Abrir menú"); });
     var demo = S.demo;
-    ["home-demo-badge","sec-demo-badge","grid-demo-badge","ep-demo-badge","detail-demo-badge"].forEach(function(id){ $(id).classList.toggle("hidden", !demo); });
+    ["home-demo-badge","sec-demo-badge","grid-demo-badge","ep-demo-badge","detail-demo-badge","fav-demo-badge"].forEach(function(id){ $(id).classList.toggle("hidden", !demo); });
   }
   function goProfiles(){
     stopPlayer();
@@ -2321,12 +2547,8 @@
      ================================================================ */
   var menuAnchor = null;   // chip que abrió el menú
   function positionMenu(){
-    if(!menuAnchor) return;
-    var r = menuAnchor.getBoundingClientRect();
-    var m = $("profile-menu");
-    m.style.top = (r.bottom + 6) + "px";
-    m.style.right = Math.max(8, window.innerWidth - r.right) + "px";
-    m.style.left = "auto";
+    // El menú ahora es un velo a pantalla completa (como el del sitio
+    // principal): no se ancla al chip, no hay nada que posicionar.
   }
   function toggleProfileMenu(chip){
     if(!$("profile-menu").classList.contains("hidden") && menuAnchor === chip) closeProfileMenu();
@@ -2337,7 +2559,7 @@
     // En demo, la tercera opción sale del demo; con sesión, cierra la sesión.
     $("pm-logout").textContent = S.demo ? "Salir del demo" : "Cerrar sesión";
     $("profile-menu").classList.remove("hidden");
-    positionMenu();
+    document.body.style.overflow = "hidden";
     chip.setAttribute("aria-expanded", "true");
     $("pm-switch").focus();
   }
@@ -2345,11 +2567,12 @@
     var m = $("profile-menu");
     if(!m || m.classList.contains("hidden")) { menuAnchor = null; return; }
     m.classList.add("hidden");
+    document.body.style.overflow = "";
     if(menuAnchor) menuAnchor.setAttribute("aria-expanded", "false");
     menuAnchor = null;
   }
   function menuKeydown(ev){
-    var items = ["pm-switch", "pm-support", "pm-help", "pm-panel", "pm-chat", "pm-logout"];
+    var items = ["pm-switch", "pm-favorites", "pm-account", "pm-hist", "pm-help", "pm-panel", "pm-chat", "pm-logout"];
     var i = items.indexOf(document.activeElement ? document.activeElement.id : "");
     if(ev.key === "ArrowDown"){ ev.preventDefault(); $(items[(i + 1 + items.length) % items.length]).focus(); }
     else if(ev.key === "ArrowUp"){ ev.preventDefault(); $(items[(i - 1 + items.length) % items.length]).focus(); }
@@ -2359,9 +2582,6 @@
       closeProfileMenu();
       if(a) a.focus();
     }
-  }
-  function contactSupport(){
-    if(window.RagerChatOpen) window.RagerChatOpen();
   }
   function closeSupportModal(){ $("modal-support").classList.add("hidden"); }
 
@@ -3443,7 +3663,7 @@
   function openSeries(item){
     S.currentSeries = item;
     epState.item = item;
-    epState.from = ["view-home", "view-grid", "view-section"].filter(function(v){ return !$(v).classList.contains("hidden"); })[0] || "view-section";
+    epState.from = ["view-home", "view-grid", "view-section", "view-favorites"].filter(function(v){ return !$(v).classList.contains("hidden"); })[0] || "view-section";
     $("ep-title").textContent = item.name;
     // Cabecera de la vista previa: carátula grande de la serie y, cuando
     // llega la ficha del panel, descripción y metadatos.
@@ -3480,6 +3700,7 @@
         if(plot){ epPlot.textContent = plot; epPlot.classList.remove("hidden"); }
       });
     }
+    paintFavButton($("ep-fav"), isFavorite("series", item.seriesId));
     $("ep-seasons").innerHTML = "";
     $("ep-list").innerHTML = '<div class="loading">Cargando episodios…</div>';
     renderChips();
@@ -4626,7 +4847,7 @@
   }
   function openMovieDetail(m){
     detailState.movie = m;
-    detailState.from = ["view-home", "view-grid", "view-section"].filter(function(v){
+    detailState.from = ["view-home", "view-grid", "view-section", "view-favorites"].filter(function(v){
       return !$(v).classList.contains("hidden");
     })[0] || "view-section";
     $("detail-title").textContent = m.name;
@@ -4642,6 +4863,7 @@
     $("detail-play").textContent = (rec && rec.pos > 5)
       ? "▶ Continuar en " + fmtTime(rec.pos)
       : "▶ Ver ahora";
+    paintFavButton($("detail-fav"), isFavorite("movies", m.streamId));
     showView("view-detail");
     if(S.demo) return;
     api("get_vod_info", "&vod_id=" + encodeURIComponent(m.streamId)).then(function(root){
@@ -4988,13 +5210,16 @@
   $("modal-profile").addEventListener("click", function(ev){ if(ev.target === this) closeProfileModal(); });
   $("pm-name").addEventListener("keydown", function(ev){ if(ev.key === "Enter"){ ev.preventDefault(); saveProfileFromModal(); } });
 
-  ["home-chip","sec-chip","grid-chip","ep-chip","detail-chip"].forEach(function(id){
+  ["home-chip","sec-chip","grid-chip","ep-chip","detail-chip","fav-chip"].forEach(function(id){
     $(id).addEventListener("click", function(){ toggleProfileMenu($(id)); });
   });
+  $("pm-favorites").addEventListener("click", function(){ closeProfileMenu(); openFavorites(); });
   $("pm-switch").addEventListener("click", function(){ closeProfileMenu(); goProfiles(); });
   $("pm-account").addEventListener("click", function(){ closeProfileMenu(); openAccountModal(); });
-  $("pm-support").addEventListener("click", function(){ closeProfileMenu(); contactSupport(); });
   $("pm-logout").addEventListener("click", function(){ closeProfileMenu(); logout(); });
+  $("pm-close").addEventListener("click", function(){ var a = menuAnchor; closeProfileMenu(); if(a) a.focus(); });
+  // Clic en el velo (fuera del panel): cierra, como en el sitio principal.
+  $("profile-menu").addEventListener("click", function(ev){ if(ev.target === this) closeProfileMenu(); });
   $("profile-menu").addEventListener("keydown", menuKeydown);
   // Clic fuera del menú (y fuera de cualquier chip): se cierra.
   document.addEventListener("click", function(ev){
@@ -5032,6 +5257,15 @@
   $("opt-live").addEventListener("click", function(){ openSection("live", true); });
   $("opt-movies").addEventListener("click", function(){ openSection("movies", true); });
   $("opt-series").addEventListener("click", function(){ openSection("series", true); });
+  $("fav-back").addEventListener("click", function(){ goHome(); });
+  $("detail-fav").addEventListener("click", function(){
+    if(!detailState.movie) return;
+    paintFavButton($("detail-fav"), toggleFavorite("movies", movieFavEntry(detailState.movie)));
+  });
+  $("ep-fav").addEventListener("click", function(){
+    if(!epState.item) return;
+    paintFavButton($("ep-fav"), toggleFavorite("series", seriesFavEntry(epState.item)));
+  });
   document.querySelectorAll(".home-opt").forEach(function(o){
     o.addEventListener("focus", function(){
       document.querySelectorAll(".home-opt").forEach(function(x){ x.classList.remove("focused"); });
@@ -5728,7 +5962,7 @@ var pp = document.getElementById("pm-panel");
 if(pp) pp.addEventListener("click", function(){ closeProfileMenuSafe(); location.href = ADMIN_PANEL + "#token=" + encodeURIComponent(sessTok || ""); });
 var pc = document.getElementById("pm-chat");
 if(pc) pc.addEventListener("click", function(){ closeProfileMenuSafe(); window.open(ADMIN_CHAT + "#t=" + encodeURIComponent(sessTok || ""), "_blank", "noopener"); });
-function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu"); if(m) m.classList.add("hidden"); }
+function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu"); if(m) m.classList.add("hidden"); document.body.style.overflow = ""; }
 })();
 </script>
 <!-- ===== /RAGER CHAT + ADMIN (PREVIEW) ===== -->

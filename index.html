@@ -5621,6 +5621,7 @@
     norm: norm, gKeyOf: gKeyOf,
     countryOfName: countryOfName, countryOfCat: countryOfCat,
     catName: function(ch){ return (S.live && S.live.catName[String(ch.categoryId)]) || ""; },
+    dailyEvents: function(){ return dailyEventChannels(); },
     taxonomy: TAXONOMY
   };
 })();
@@ -6365,7 +6366,7 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
 })();
 </script>
 
-<!-- ===== RAGER · ALBERT EN EL REPRODUCTOR (PREVIA: Albert puede poner canales en vivo) · inicio ===== -->
+<!-- ===== RAGER · ALBERT EN EL REPRODUCTOR (PREVIA: Albert pone canales y EVENTOS en vivo) · inicio ===== -->
 <style>
 /* Burbuja flotante de Albert (misma identidad visual que en el sitio:
    círculo negro, borde rojo e insignia «IA»). z-index 100 a propósito:
@@ -6397,6 +6398,32 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
 .alb-chip{background:#0f0f13;color:#f8f8fa;border:1px solid #8c1d1d;border-radius:999px;padding:9px 14px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
 .alb-chip:hover,.alb-chip:focus-visible{background:#5f1214;border-color:#e53935;outline:none}
 #alb-note{flex:0 0 auto;margin:0;padding:8px 12px;font-size:12.5px;line-height:1.4;color:#ffb3b0;background:#2a0f10;border-top:1px solid #5a2323}
+/* Capa de votos del EVENTO sobre el VÍDEO (corrección de Sergio,
+   2026-11-28: los botones van en el vídeo, no en el panel, y son
+   SOLO dos — «Sí es este evento» y «No es este evento»). La capa
+   la crea el script dentro de la caja del vídeo, así que sigue su
+   mismo ciclo: aparece y desaparece con la botonera del
+   reproductor (su clase .show se copia de la barra) y en
+   horizontal/TV viaja con la caja girada, como los demás
+   controles. Va abajo, sobre la barra, sin tapar los controles
+   centrales, y SOLO existe cuando fue Albert quien puso el
+   evento: si el cliente llega al canal por su cuenta, la capa
+   ni se arma. */
+#alb-evbar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));z-index:8;display:flex;flex-direction:column;align-items:center;gap:8px;width:max-content;max-width:94vw;opacity:0;pointer-events:none;transition:opacity .3s ease;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+#alb-evbar.show{opacity:1;pointer-events:auto}
+#alb-evbar-label{background:rgba(5,5,7,.85);color:#f8f8fa;font-size:13.5px;line-height:1.35;text-align:center;border:1px solid #2b2b33;border-radius:999px;padding:6px 14px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#alb-evbar-btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+#alb-evbar-btns button{border-radius:999px;padding:12px 20px;font-size:15.5px;font-weight:800;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+#alb-ev-yes{background:#e53935;color:#fff;border:2px solid #e53935}
+#alb-ev-yes:hover,#alb-ev-yes:focus-visible{background:#f44336;outline:none}
+#alb-ev-yes[disabled]{background:#101016;color:#d7d7de;border-color:#3a3a44;cursor:default;box-shadow:none}
+#alb-ev-no{background:rgba(5,5,7,.9);color:#ffb3b0;border:2px solid #8c1d1d}
+#alb-ev-no:hover,#alb-ev-no:focus-visible{background:#5f1214;border-color:#e53935;outline:none}
+@media (min-width:900px){
+  #alb-evbar{bottom:128px}
+  #alb-evbar-label{font-size:15px}
+  #alb-evbar-btns button{padding:14px 26px;font-size:17px}
+}
 #alb-hint{flex:0 0 auto;margin:0;padding:7px 14px 0;font-size:12px;color:#7d7d88}
 #alb-form{flex:0 0 auto;display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#030609}
 #alb-q{flex:1;background:#0f0f13;color:#f8f8fa;border:1px solid #2b2b33;border-radius:10px;padding:12px;font-size:16px;outline:none;font-family:inherit;min-width:0}
@@ -6410,12 +6437,12 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
 </button>
 <section id="alb-panel" role="dialog" aria-label="Albert, asistente de Rager" aria-hidden="true">
   <header id="alb-head">
-    <div id="alb-title"><span id="alb-brand">Albert</span><span id="alb-sub">Asistente de Rager · Pídeme un canal en vivo</span></div>
+    <div id="alb-title"><span id="alb-brand">Albert</span><span id="alb-sub">Asistente de Rager · Pídeme un canal o un evento en vivo</span></div>
     <button id="alb-close" type="button" aria-label="Cerrar a Albert">&times;</button>
   </header>
   <div id="alb-msgs"></div>
   <p id="alb-note" hidden></p>
-  <p id="alb-hint">También puedo ponerte un canal: dime «pon ESPN Deportes» o «quiero ver noticias de México».</p>
+  <p id="alb-hint">También puedo ponerte un canal o un evento: dime «pon ESPN Deportes» o «ponme el juego del Real Madrid».</p>
   <form id="alb-form">
     <input id="alb-q" type="text" placeholder="Escribe tu pregunta…" autocomplete="off" enterkeyhint="send">
     <button id="alb-send" type="submit">Enviar</button>
@@ -6428,12 +6455,13 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
      «Chats IA» y reenvía a Albert). Al publicar se cambia esta sola
      línea por la ruta definitiva. */
   var API = 'https://puente.ragerservices.net/rager/bot/registro/api/v1/chat/completions';
-  var KB = "Eres Albert, el asistente de ayuda de Rager (ragerservices.net), un servicio de televisión por internet. Te llamas Albert: si te preguntan cómo te llamas o quién eres, responde que eres Albert, el asistente de Rager. Respondes en español, breve, claro y amable.\n\nREGLAS:\n- Solo puedes afirmar datos que estén en esta base de conocimiento.\n- Si te preguntan algo que no está aquí (una película concreta, un precio distinto, el estado de una cuenta), di que no tienes ese dato y ofrece el WhatsApp de soporte humano: +1 (570) 469-8339. Para los canales manda la sección CANALES de más abajo.\n- Nunca inventes precios, códigos, pasos ni canales.\n- Nunca pidas contraseñas ni datos de pago.\n\nCANALES (recomendaciones):\n- Cuando el cliente pregunte por canales (de un país, de deportes, infantiles, de noticias, un canal concreto…), el sistema te entrega junto a la conversación unos «DATOS DEL CATÁLOGO» con resultados reales de nuestro catálogo de canales en vivo. Recomienda SOLO los canales y categorías que vengan en esos datos, con los nombres tal como están escritos.\n- Recomienda pocas opciones y buenas (un puñado, no listas interminables), agrupadas por país o por tema si ayuda, y menciona cuántos canales hay en la categoría cuando el dato venga. Si la pregunta es muy amplia, ofrece afinar: «¿de qué país?» o «¿qué deporte buscas?».\n- Si los datos dicen que no hubo coincidencias con lo que pide (por ejemplo, un canal concreto que no aparece), dilo con honestidad: ese canal no está en nuestro catálogo. Nunca inventes un canal ni digas que lo tenemos si no está en los datos. Ofrécele el chat con una persona en «Contactar a soporte» (está en el menú del sitio y del reproductor).\n- Los datos son de canales en vivo: no afirmes horarios ni qué programa está pasando si los datos no lo traen.\n- Si en una pregunta de canales NO te llegan datos del catálogo, no recomiendes canales de memoria: di que en este momento no puedes consultar el catálogo y ofrece «Contactar a soporte».\n\nPLANES (todos incluyen canales en vivo, películas y series):\n- Silver: $10.99 por mes, 3 dispositivos.\n- Gold: $25.99 por 3 meses, 3 dispositivos.\n- Platinum: $45.99 por 6 meses, 5 dispositivos.\nNo hay otros planes ni otras cantidades de dispositivos.\nReferidos: quien recomienda Rager gana el 25% de cada venta y de cada renovación de sus referidos.\n\nCUENTA RAGER:\n- La cuenta se crea en ragerservices.net.\n- La app y el reproductor web entran con el correo y la contraseña de tu cuenta Rager. No necesitas ningún usuario ni contraseña de línea, ni escribir ningún servidor: eso ya no se usa.\n- Si olvidaste tu contraseña, usa el enlace de recuperación de la pantalla de acceso: te llega un correo con un enlace válido por 1 hora.\n\nLA APP RAGER:\n- Funciona en Android (teléfono y tablet), Android TV y Fire TV.\n- Instalación en Fire TV y Android TV: abre la aplicación Downloader, escribe el código 3890011 y sigue las instrucciones para descargar e instalar la app. Después ábrela y entra con tu cuenta Rager.\n- En Android también puedes descargar la app desde ragerservices.net.\n- El código de Downloader es 3890011.\n\nAPARATOS QUE NO ACEPTAN LA APP:\n- Los Fire TV más nuevos (con Vega OS), el iPhone, el iPad, el Apple TV, las teles Samsung y LG y los Roku no pueden instalar la app.\n- En esos aparatos Rager se ve en el navegador con el reproductor web: ver.ragerservices.net, entrando con la misma cuenta Rager.\n- Otra opción es usar el enlace personal de tu cuenta en un reproductor de terceros compatible; si necesitas el tuyo, pídelo por el WhatsApp de soporte.\n\nSI UN CANAL NO CARGA:\n1. Revisa tu conexión a internet.\n2. Cierra la app o el reproductor y vuelve a abrirlo.\n3. Comprueba en «Mi cuenta» que tu suscripción esté vigente.\n4. Si sigue igual, escribe al WhatsApp de soporte: +1 (570) 469-8339.\n\nSI LA APP PIDE ACTUALIZAR:\n- En el aviso de actualización, toca «Actualizar» y espera a que la app descargue e instale la nueva versión. No desinstales nada.\n- El botón «Ahora no» pospone el aviso 24 horas.\n- Si la actualización falla, instala la app de nuevo con Downloader y el código 3890011.\n\nRENOVAR:\n- Para renovar, usa el botón «Renovar suscripción» de tu cuenta o escribe directamente al WhatsApp de soporte: +1 (570) 469-8339.\n\nSOPORTE HUMANO: WhatsApp +1 (570) 469-8339, también desde el sitio principal ragerservices.net.\n";
+  var KB = "Eres Albert, el asistente de ayuda de Rager (ragerservices.net), un servicio de televisión por internet. Te llamas Albert: si te preguntan cómo te llamas o quién eres, responde que eres Albert, el asistente de Rager. Respondes en español, breve, claro y amable.\n\nREGLAS:\n- Solo puedes afirmar datos que estén en esta base de conocimiento.\n- Si te preguntan algo que no está aquí (una película concreta, un precio distinto, el estado de una cuenta), di que no tienes ese dato y ofrece el WhatsApp de soporte humano: +1 (570) 469-8339. Para los canales manda la sección CANALES de más abajo.\n- Nunca inventes precios, códigos, pasos ni canales.\n- Nunca pidas contraseñas ni datos de pago.\n\nCANALES (recomendaciones):\n- Cuando el cliente pregunte por canales (de un país, de deportes, infantiles, de noticias, un canal concreto…), el sistema te entrega junto a la conversación unos «DATOS DEL CATÁLOGO» con resultados reales de nuestro catálogo de canales en vivo. Recomienda SOLO los canales y categorías que vengan en esos datos, con los nombres tal como están escritos.\n- Recomienda pocas opciones y buenas (un puñado, no listas interminables), agrupadas por país o por tema si ayuda, y menciona cuántos canales hay en la categoría cuando el dato venga. Si la pregunta es muy amplia, ofrece afinar: «¿de qué país?» o «¿qué deporte buscas?».\n- Si los datos dicen que no hubo coincidencias con lo que pide (por ejemplo, un canal concreto que no aparece), dilo con honestidad: ese canal no está en nuestro catálogo. Nunca inventes un canal ni digas que lo tenemos si no está en los datos. Ofrécele el chat con una persona en «Contactar a soporte» (está en el menú del sitio y del reproductor).\n- Los datos son de canales en vivo: no afirmes horarios ni qué programa está pasando si los datos no lo traen.\n- Si en una pregunta de canales NO te llegan datos del catálogo, no recomiendes canales de memoria: di que en este momento no puedes consultar el catálogo y ofrece «Contactar a soporte».\n\nGUÍA DE TV (programación):\n- Cuando el cliente pregunte qué están dando en un canal, qué hay esta noche o esta tarde, a qué hora dan un programa o en qué canal lo dan, el sistema te entrega unos «DATOS DE LA GUÍA DE TV» tomados de guías web públicas (el índice se refresca varias veces al día). Responde SOLO con esos datos: el programa y las horas tal como vienen, diciendo el país del canal («hora de Costa Rica», «hora de México»…).\n- Si el cliente pide PONER un programa o un evento concreto («ponme la novela…», «ponme el partido de…») y los datos de la guía dicen qué canal lo está emitiendo a esa hora, ese es el canal preciso: nómbralo tal como consta en los datos.\n- Si de un canal no te llegan datos de la guía, di «de ese canal no tengo la programación» y ofrece lo que sí puedas: los eventos del día o recomendaciones de canales. Nunca inventes programas, horarios ni el canal que da un programa.\n- La guía no cubre todos los canales del catálogo: cubre los principales de México, Costa Rica, Colombia, España, Estados Unidos y otros países, y de algunos canales solo trae parte del día. No prometas cobertura total.\n\nPLANES (todos incluyen canales en vivo, películas y series):\n- Silver: $10.99 por mes, 3 dispositivos.\n- Gold: $25.99 por 3 meses, 3 dispositivos.\n- Platinum: $45.99 por 6 meses, 5 dispositivos.\nNo hay otros planes ni otras cantidades de dispositivos.\nReferidos: quien recomienda Rager gana el 25% de cada venta y de cada renovación de sus referidos.\n\nCUENTA RAGER:\n- La cuenta se crea en ragerservices.net.\n- La app y el reproductor web entran con el correo y la contraseña de tu cuenta Rager. No necesitas ningún usuario ni contraseña de línea, ni escribir ningún servidor: eso ya no se usa.\n- Si olvidaste tu contraseña, usa el enlace de recuperación de la pantalla de acceso: te llega un correo con un enlace válido por 1 hora.\n\nLA APP RAGER:\n- Funciona en Android (teléfono y tablet), Android TV y Fire TV.\n- Instalación en Fire TV y Android TV: abre la aplicación Downloader, escribe el código 3890011 y sigue las instrucciones para descargar e instalar la app. Después ábrela y entra con tu cuenta Rager.\n- En Android también puedes descargar la app desde ragerservices.net.\n- El código de Downloader es 3890011.\n\nAPARATOS QUE NO ACEPTAN LA APP:\n- Los Fire TV más nuevos (con Vega OS), el iPhone, el iPad, el Apple TV, las teles Samsung y LG y los Roku no pueden instalar la app.\n- En esos aparatos Rager se ve en el navegador con el reproductor web: ver.ragerservices.net, entrando con la misma cuenta Rager.\n- Otra opción es usar el enlace personal de tu cuenta en un reproductor de terceros compatible; si necesitas el tuyo, pídelo por el WhatsApp de soporte.\n\nSI UN CANAL NO CARGA:\n1. Revisa tu conexión a internet.\n2. Cierra la app o el reproductor y vuelve a abrirlo.\n3. Comprueba en «Mi cuenta» que tu suscripción esté vigente.\n4. Si sigue igual, escribe al WhatsApp de soporte: +1 (570) 469-8339.\n\nSI LA APP PIDE ACTUALIZAR:\n- En el aviso de actualización, toca «Actualizar» y espera a que la app descargue e instale la nueva versión. No desinstales nada.\n- El botón «Ahora no» pospone el aviso 24 horas.\n- Si la actualización falla, instala la app de nuevo con Downloader y el código 3890011.\n\nRENOVAR:\n- Para renovar, usa el botón «Renovar suscripción» de tu cuenta o escribe directamente al WhatsApp de soporte: +1 (570) 469-8339.\n\nSOPORTE HUMANO: WhatsApp +1 (570) 469-8339, también desde el sitio principal ragerservices.net.";
   /* MODO REPRODUCTOR: la orden de poner un canal viaja como una línea
      de protocolo que SOLO entiende esta página; Albert nunca confirma
      la reproducción, de eso se encarga el reproductor al recibirla. */
-  var MODO = "\n\nMODO REPRODUCTOR (SOLO en esta página):\nEstás dentro del reproductor web de Rager y el usuario puede pedirte que pongas un canal en vivo.\n- Si el usuario te pide poner, ver, sintonizar o abrir un canal en vivo, o un tema o un país de canales (ejemplos: «pon ESPN Deportes», «quiero ver un canal de noticias de México», «pásame a deportes»), responde ÚNICAMENTE con esta línea y nada más, sin saludos ni explicaciones:\nPONER_CANAL: <el canal, tema o país que pidió, con tus palabras>\n- Si el usuario responde con el nombre de un canal después de que le ofreciste opciones, o elige una opción, usa la misma línea con ese nombre.\n- Si solo pide una recomendación o información sobre canales SIN pedir que lo pongas, responde normal, sin esa línea.\n- Solo puedes poner canales en vivo. Si pide una película o una serie, dile que desde aquí solo puedes poner canales en vivo y que la busque en las secciones de Películas o Series del reproductor; no uses la línea para eso.\n- Nunca digas que ya pusiste un canal ni confirmes la reproducción: de ponerlo se encarga el reproductor cuando recibe tu línea.";
-  var SYS = KB + MODO;
+  var MODO = "\n\nMODO REPRODUCTOR (SOLO en esta página):\nEstás dentro del reproductor web de Rager y el usuario puede pedirte que pongas un canal en vivo.\n- Si el usuario te pide poner, ver, sintonizar o abrir un canal en vivo, o un tema o un país de canales (ejemplos: «pon ESPN Deportes», «quiero ver un canal de noticias de México», «pásame a deportes»), responde ÚNICAMENTE con esta línea y nada más, sin saludos ni explicaciones:\nPONER_CANAL: <el canal, tema o país que pidió, con tus palabras>\n- Si el usuario responde con el nombre de un canal después de que le ofreciste opciones, o elige una opción, usa la misma línea con ese nombre.\n- Si solo pide una recomendación o información sobre canales SIN pedir que lo pongas, responde normal, sin esa línea.\n- Solo puedes poner canales en vivo. Si pide una película o una serie, dile que desde aquí solo puedes poner canales en vivo y que la busque en las secciones de Películas o Series del reproductor; no uses la línea para eso.\n- Nunca digas que ya pusiste un canal ni confirmes la reproducción: de ponerlo se encarga el reproductor cuando recibe tu línea.\n- CONTRASTE CON LA GUÍA DE TV: si junto a la conversación llegan unos «DATOS DE LA GUÍA DE TV» que dicen qué canal está emitiendo a esta hora el programa o el evento que te piden poner, responde ÚNICAMENTE con la línea PONER_CANAL seguida de ESE canal, con el nombre tal como consta en los datos de la guía: ese canal manda sobre cualquier nombre genérico o de evento.";
+  var MODO_EV = "\nEVENTOS (SOLO en esta página):\n- Si el usuario te pide ver el juego, el partido, el encuentro o la pelea de un equipo o de una competición (ejemplos: «ponme el juego del Real Madrid», «quiero ver el partido del Barcelona», «ponme la pelea de UFC», «ponme la Champions», «ponme la pelea de boxeo»), responde ÚNICAMENTE con esta línea y nada más, sin saludos ni explicaciones:\nEVENTO: <el equipo, la competición o el evento que pidió, con tus palabras>\n- Si pregunta por un evento SIN pedir que lo pongas (¿a qué hora juega el Madrid?, ¿juega hoy el Barcelona?, ¿quién pasa el partido del América?), responde ÚNICAMENTE con esta línea:\nEVENTO_INFO: <el equipo o el evento>\n- Si pide un canal por su nombre (ESPN Deportes, TUDN, un canal de noticias de México…), usa PONER_CANAL como hasta ahora: EVENTO es solo para equipos, competiciones y eventos deportivos concretos, no para nombres de canal.\n- Nunca afirmes la hora de un partido ni qué canal lo pasa: de eso se encarga el reproductor cuando recibe tu línea, igual que con PONER_CANAL.";
+  var SYS = KB + MODO + MODO_EV;
 
   /* ==== ALBERT-RESOLVER (extraíble para pruebas) ====
      Resuelve lo pedido contra la lista maestra de canales en vivo
@@ -6550,6 +6578,479 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
   }
   /* ==== FIN ALBERT-RESOLVER ==== */
 
+  /* ==== ALBERT-EVENTS (extraíble para pruebas) ====
+     Resuelve EVENTOS del día (un equipo, una competición, una
+     pelea) contra la sección «Eventos del día» del propio
+     reproductor (rp.dailyEvents(): la cartelera de hoy más los
+     canales de evento con señal según eventos.json, ya ordenados
+     por la escalera de eventos y la estabilidad del reproductor).
+     Los datos del evento (equipos, competición, hora y canal
+     portador) salen del NOMBRE de cada canal, tal como lo
+     publica el panel; el feed eventos.json solo trae los ids.
+     Formatos de nombre que trae el panel:
+       A) «LES | 02:00 PM | Real Madrid vs. Alaves» — la hora
+          viene en hora de México (America/Mexico_City, UTC-6).
+       B) «15:00 | Real Madrid vs Deportivo Alaves | HD 1 |
+          ESPN Deportes | 11/28» y variantes sin «HD n» o con la
+          hora tras los equipos — la hora viene en hora de
+          Colombia/Perú (America/Bogota, UTC-5).
+       C) «NHL 01: A VS B (28-11 4:00PM ET)» — la hora viene
+          marcada ET (America/New_York).
+     Las tres lecturas se comprobaron cruzando el mismo partido
+     en dos bloques: dan el mismo instante UTC.
+     Regla de la casa: «Madrid» a secas es el Real Madrid (el
+     Atlético no cuenta), y el «Barcelona» del usuario es el FC
+     Barcelona: el Barcelona SC de Ecuador es otro equipo. */
+  function albEvNorm(s){
+    return String(s || '').toUpperCase()
+      .replace(/Á/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O')
+      .replace(/Ú/g, 'U').replace(/Ü/g, 'U').replace(/Ñ/g, 'N').replace(/Ç/g, 'C')
+      .replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function albTzOffsetMs(tz, date){
+    var parts = {};
+    new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' })
+      .formatToParts(date).forEach(function(p){ parts[p.type] = p.value; });
+    var asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, (+parts.hour) % 24, +parts.minute, +parts.second);
+    return asUtc - Math.floor(date.getTime() / 1000) * 1000;
+  }
+  function albTzMs(tz, y, mo, d, hh, mm){
+    var want = Date.UTC(y, mo - 1, d, hh, mm), guess = want, i;
+    for(i = 0; i < 3; i++) guess = want - albTzOffsetMs(tz, new Date(guess));
+    return guess;
+  }
+  function albTzTodayMs(tz, hh, mm){
+    var parts = {};
+    new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric' })
+      .formatToParts(new Date()).forEach(function(p){ parts[p.type] = p.value; });
+    return albTzMs(tz, +parts.year, +parts.month, +parts.day, hh, mm);
+  }
+  var ALB_EV_VS = /\s+VS\.?\s+/i;
+  function albParseEvent(name){
+    var raw = String(name || '').trim();
+    if(!raw) return null;
+    /* Bloque C: «NHL 01: Vegas Golden Knights VS Montreal Canadiens (28-11 4:00PM ET)» */
+    var c = /^(NHL|NBA|MLS SOCCER|MLS|UFC|NFL|TENIS)\s*\d*\s*:\s*(.+?)\s*\((\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)\s*ET\)/i.exec(raw);
+    if(c){
+      if(!ALB_EV_VS.test(c[2])) return null;
+      var hhC = (+c[5]) % 12; if(/PM/i.test(c[7])) hhC += 12;
+      var yr = new Date().getFullYear();
+      return { comp: albEvNorm(c[1]), teamsText: c[2], carrier: '',
+               startMs: albTzMs('America/New_York', yr, +c[4], +c[3], hhC, +c[6]) };
+    }
+    var parts = raw.split('|').map(function(s){ return s.trim(); });
+    var ti = -1, i;
+    for(i = 0; i < parts.length; i++){ if(ALB_EV_VS.test(parts[i])){ ti = i; break; } }
+    if(ti < 0) return null;
+    var teamsText = parts[ti];
+    var comp = '';
+    /* En nombres de una sola pieza la liga puede ir pegada a los
+       equipos («Boxeo PESO PESADO Agit Kabayel vs Damian Knyba»):
+       se separa y cuenta como competición. */
+    var lgp = /^(NBA|NHL|UFC|NFL|TENIS|BOXEO|BOX|MLS)\s+(.+)$/i.exec(teamsText);
+    if(lgp && ALB_EV_VS.test(lgp[2])){ comp = albEvNorm(lgp[1]); teamsText = lgp[2]; }
+    /* La hora: la primera «H:MM» fuera del segmento de equipos
+       (puede ir en su propio segmento o pegada a la liga). */
+    var hh = null, mm = 0, ampm = null;
+    for(i = 0; i < parts.length; i++){
+      if(i === ti) continue;
+      var tm = /(\d{1,2}):(\d{2})\s*(AM|PM)?/i.exec(parts[i]);
+      if(tm){ hh = +tm[1]; mm = +tm[2]; ampm = tm[3] ? tm[3].toUpperCase() : null; break; }
+    }
+    /* …o delante de los equipos, en nombres de una sola pieza
+       («12:00 Boxeo … vs …»): se extrae y se retira del texto. */
+    if(hh === null){
+      var lt = /^(\d{1,2}):(\d{2})\s*(AM|PM)?\s+(.+)$/i.exec(teamsText);
+      if(lt && ALB_EV_VS.test(lt[4])){
+        hh = +lt[1]; mm = +lt[2]; ampm = lt[3] ? lt[3].toUpperCase() : null;
+        teamsText = lt[4];
+        var lgp2 = /^(NBA|NHL|UFC|NFL|TENIS|BOXEO|BOX|MLS)\s+(.+)$/i.exec(teamsText);
+        if(lgp2 && ALB_EV_VS.test(lgp2[2])){ if(!comp) comp = albEvNorm(lgp2[1]); teamsText = lgp2[2]; }
+      }
+    }
+    var startMs = null;
+    if(hh !== null){
+      if(ampm){
+        var h12 = hh % 12; if(ampm === 'PM') h12 += 12;
+        startMs = albTzTodayMs('America/Mexico_City', h12, mm);
+      } else {
+        startMs = albTzTodayMs('America/Bogota', hh, mm);
+      }
+    }
+    /* Competición: el segmento previo a los equipos (formato A)
+       o la palabra de liga que acompaña a la hora («NBA 17:00»). */
+    for(i = 0; i < parts.length; i++){
+      if(i === ti) continue;
+      var p = parts[i];
+      if(/\d{1,2}:\d{2}/.test(p)){
+        var lg = /^([A-ZÁÉÍÓÚÜÑ ]+?)\s+\d{1,2}:\d{2}/i.exec(p);
+        if(lg && !comp) comp = albEvNorm(lg[1]);
+        continue;
+      }
+      if(/^HD\s*\d+$/i.test(p) || /^\d{1,2}\/\d{1,2}$/.test(p)) continue;
+      if(!comp && i < ti) comp = albEvNorm(p);
+    }
+    /* Portador: el primer segmento tras los equipos que no sea
+       «HD n», ni la fecha, ni una hora suelta. */
+    var carrier = '';
+    for(i = ti + 1; i < parts.length; i++){
+      var q = parts[i];
+      if(/^HD\s*\d+$/i.test(q)) continue;
+      if(/^\d{1,2}\/\d{1,2}$/.test(q)) continue;
+      if(/^\d{1,2}:\d{2}(\s*(AM|PM))?$/i.test(q)) continue;
+      carrier = q; break;
+    }
+    return { comp: comp, teamsText: teamsText, carrier: carrier, startMs: startMs };
+  }
+  function albEvCore(teamNorm){
+    var toks = String(teamNorm || '').split(' ').filter(Boolean);
+    return toks.length ? toks[toks.length - 1] : '';
+  }
+  function albEvState(fx, nowMs){
+    if(fx.startMs === null || fx.startMs === undefined) return 'live';
+    var dur = /\bUFC\b|\bBOXEO\b|\bBOX\b|\bMMA\b|BKFC/.test(fx.compHay) ? 240 : 150;
+    if(nowMs < fx.startMs - 60000) return 'future';
+    if(nowMs <= fx.startMs + dur * 60000) return 'live';
+    return 'done';
+  }
+  function albAffix(shortT, longT){
+    var ts = shortT.split(' '), tl = longT.split(' '), i;
+    if(ts.length >= tl.length) return false;
+    var pre = true;
+    for(i = 0; i < ts.length; i++) if(ts[i] !== tl[i]){ pre = false; break; }
+    if(pre) return true;
+    var suf = true;
+    for(i = 0; i < ts.length; i++) if(ts[i] !== tl[tl.length - ts.length + i]){ suf = false; break; }
+    return suf;
+  }
+  function albTeamCompat(a, b){
+    if(a === b || albAffix(a, b) || albAffix(b, a)) return true;
+    /* Subconjunto de palabras: un bloque trae el nombre limpio
+       («BARCELONA») y otro el mismo equipo con la liga pegada
+       delante («LIGAPRO EC BARCELONA SC»): si todas las palabras
+       del nombre corto están en el largo, es el mismo equipo. */
+    var ta = a.split(' '), tb = b.split(' ');
+    var shortT = ta.length <= tb.length ? ta : tb;
+    var longSet = {};
+    (ta.length <= tb.length ? tb : ta).forEach(function(t){ longSet[t] = 1; });
+    return shortT.every(function(t){ return !!longSet[t]; });
+  }
+  function albertBuildFixtures(dailyList, nowMs){
+    var fixtures = [], byKey = {};
+    (dailyList || []).forEach(function(ch, pos){
+      var p = albParseEvent(ch.name);
+      if(!p) return;
+      var tt = String(p.teamsText || '').split(ALB_EV_VS);
+      if(tt.length < 2) return;
+      var na = albEvNorm(tt[0]), nb = albEvNorm(tt.slice(1).join(' VS '));
+      var cores = [albEvCore(na), albEvCore(nb)].sort();
+      var key = (p.startMs === null ? 'sin-hora' : String(Math.round(p.startMs / 60000))) + '|' + cores[0] + '|' + cores[1];
+      var fx = byKey[key];
+      if(!fx){
+        var comp = p.comp || '';
+        if(comp === 'LES') comp = 'LALIGA';
+        if(comp === 'EPL') comp = 'PREMIER LEAGUE';
+        fx = { key: key, label: p.teamsText, comp: comp, startMs: p.startMs, sides: [na, nb],
+               variants: [], teamSet: [], teamsNorm: '', compHay: '' };
+        byKey[key] = fx;
+        fixtures.push(fx);
+      }
+      if(p.teamsText.length > fx.label.length) fx.label = p.teamsText;
+      if(!fx.comp && p.comp){
+        fx.comp = (p.comp === 'LES') ? 'LALIGA' : (p.comp === 'EPL' ? 'PREMIER LEAGUE' : p.comp);
+      }
+      [na, nb].forEach(function(t){ if(t && fx.teamSet.indexOf(t) < 0) fx.teamSet.push(t); });
+      fx.variants.push({ ch: ch, carrier: p.carrier || '', pos: pos });
+    });
+    /* Fusión: el mismo partido puede venir en dos bloques con el
+       nombre del equipo más o menos completo («Betis vs Rayo» /
+       «Real Betis vs Rayo Vallecano»; «Barcelona» / «Barcelona
+       SC» son el mismo partido del bloque ecuatoriano). Si dos
+       grupos comparten instante y sus equipos son compatibles
+       (iguales o uno prefijo/sufijo del otro, en cualquier orden),
+       son el mismo evento y se funden. */
+    var merged = true;
+    while(merged){
+      merged = false;
+      outer:
+      for(var i = 0; i < fixtures.length; i++){
+        for(var j = i + 1; j < fixtures.length; j++){
+          var A = fixtures[i], B = fixtures[j];
+          if(A.startMs === null || B.startMs === null || A.startMs !== B.startMs) continue;
+          var direct = albTeamCompat(A.sides[0], B.sides[0]) && albTeamCompat(A.sides[1], B.sides[1]);
+          var crossed = albTeamCompat(A.sides[0], B.sides[1]) && albTeamCompat(A.sides[1], B.sides[0]);
+          if(!direct && !crossed) continue;
+          B.variants.forEach(function(v){ A.variants.push(v); });
+          B.teamSet.forEach(function(t){ if(A.teamSet.indexOf(t) < 0) A.teamSet.push(t); });
+          if(B.label.length > A.label.length) A.label = B.label;
+          if(!A.comp && B.comp) A.comp = B.comp;
+          fixtures.splice(j, 1);
+          merged = true;
+          break outer;
+        }
+      }
+    }
+    fixtures.forEach(function(fx){
+      fx.variants.sort(function(a, b){ return a.pos - b.pos; });
+      fx.label = fx.label.replace(/\s*\|\s*/g, ' ').replace(/\s+/g, ' ').trim();
+      fx.teamsNorm = albEvNorm(fx.label);
+      fx.compHay = albEvNorm(fx.comp + ' ' + fx.variants.map(function(v){ return v.ch.name; }).join(' '));
+      fx.state = albEvState(fx, nowMs);
+    });
+    return fixtures;
+  }
+  var ALB_EV_STOP = { juego: 1, partido: 1, pelea: 1, encuentro: 1, evento: 1, hoy: 1, juega: 1, jugando: 1, equipo: 1, canal: 1, canales: 1, favor: 1 };
+  function albEvQueryInfo(query){
+    var qn = albEvNorm(query);
+    var info = { qn: qn, team: null, comp: null, pelea: false, ufc: false };
+    if(/\bUFC\b/.test(qn)) info.ufc = true;
+    if(/\bPELEA\b|\bBOXEO\b|\bBOX\b|\bMMA\b/.test(qn)) info.pelea = true;
+    if(/\bATLETICO\b|\bATLETI\b/.test(qn)) info.team = 'ATLETICO MADRID';
+    else if(/\bREAL MADRID\b/.test(qn) || /\bMADRID\b/.test(qn)) info.team = 'REAL MADRID';
+    else if(/\bBARCELONA SC\b/.test(qn)) info.team = 'BARCELONA SC';
+    else if(/\bBARCELONA\b/.test(qn) || /\bBARCA\b/.test(qn)) info.team = 'FCB';
+    else if(/\bMANCHESTER UNITED\b|\bMAN UTD\b|\bMAN UNITED\b/.test(qn)) info.team = 'MANCHESTER UNITED';
+    if(/\bCHAMPIONS\b|\bUCL\b/.test(qn)) info.comp = 'CHAMPIONS';
+    else if(/\bLALIGA\b|\bLA LIGA\b|\bLIGA ESPANOLA\b/.test(qn)) info.comp = 'LALIGA';
+    else if(/\bPREMIER\b|\bEPL\b|\bLIGA INGLESA\b/.test(qn)) info.comp = 'PREMIER';
+    else if(/\bLIGA MX\b/.test(qn)) info.comp = 'LIGA MX';
+    else if(/\bLIBERTADORES\b/.test(qn)) info.comp = 'LIBERTADORES';
+    else if(/\bNBA\b/.test(qn)) info.comp = 'NBA';
+    else if(/\bNHL\b/.test(qn)) info.comp = 'NHL';
+    else if(/\bMLS\b/.test(qn)) info.comp = 'MLS';
+    else if(/\bNFL\b/.test(qn)) info.comp = 'NFL';
+    else if(/\bSERIE A\b/.test(qn)) info.comp = 'SERIE A';
+    else if(/\bBUNDESLIGA\b/.test(qn)) info.comp = 'BUNDESLIGA';
+    return info;
+  }
+  function albFxHasTeam(fx, team){
+    if(team === 'FCB'){
+      /* El FC Barcelona es el equipo «BARCELONA» a secas; si el
+         mismo partido trae también «BARCELONA SC», es el club
+         ecuatoriano y NO cuenta como el Barça. */
+      return fx.teamSet.indexOf('BARCELONA') >= 0 && fx.teamSet.indexOf('BARCELONA SC') < 0;
+    }
+    return fx.teamSet.some(function(t){ return t === team || t.indexOf(team + ' ') === 0; });
+  }
+  function albFxIsPelea(fx){
+    return /\bUFC\b|\bBOXEO\b|\bBOX\b|\bMMA\b|BKFC/.test(fx.compHay);
+  }
+  function albFxCompMatch(fx, comp){
+    var hay = fx.compHay;
+    if(comp === 'CHAMPIONS') return /\bCHAMPIONS\b|\bUCL\b/.test(hay);
+    if(comp === 'LALIGA') return fx.comp === 'LALIGA' || /LALIGA|LA LIGA/.test(hay);
+    if(comp === 'PREMIER') return fx.comp === 'PREMIER LEAGUE' || /PREMIER/.test(hay);
+    if(comp === 'LIGA MX') return /LIGA MX/.test(hay);
+    if(comp === 'LIBERTADORES') return /LIBERTADORES/.test(hay);
+    if(comp === 'NBA') return /\bNBA\b/.test(hay);
+    if(comp === 'NHL') return /\bNHL\b/.test(hay);
+    if(comp === 'MLS') return /\bMLS\b/.test(hay);
+    if(comp === 'NFL') return /\bNFL\b/.test(hay);
+    if(comp === 'SERIE A') return /SERIE A/.test(hay);
+    if(comp === 'BUNDESLIGA') return /BUNDESLIGA/.test(hay);
+    return false;
+  }
+  function albEvPhrase(query){
+    /* Las tablas de palabras vacías están en minúsculas (como las
+       usa el resolutor de canales con la norma del reproductor):
+       se filtra en minúsculas y se devuelve en la norma de
+       eventos (mayúsculas) para comparar con los equipos. */
+    var qn = albEvNorm(query).toLowerCase();
+    var toks = qn.split(' ').filter(function(t){
+      return t && !ALB_STOP[t] && !ALB_EV_STOP[t];
+    });
+    return toks.join(' ').toUpperCase();
+  }
+  function albFxPhraseMatch(fx, phrase){
+    if(!phrase || phrase.length < 3) return false;
+    if(fx.teamsNorm.indexOf(phrase) >= 0) return true;
+    var toks = phrase.split(' ').filter(function(t){ return t.length >= 3; });
+    if(toks.length && toks.every(function(t){ return fx.teamsNorm.indexOf(t) >= 0; })) return true;
+    return fx.teamSet.some(function(t){ return t.length >= 4 && phrase.indexOf(t) >= 0; });
+  }
+  function albEvSuggestions(fixtures){
+    var live = fixtures.filter(function(fx){ return fx.state === 'live'; });
+    var fut = fixtures.filter(function(fx){ return fx.state === 'future'; })
+      .slice().sort(function(a, b){ return (a.startMs || 0) - (b.startMs || 0); });
+    return live.concat(fut).slice(0, 5);
+  }
+  /* Devuelve:
+       {kind:'match', list}  fixtures que casan con lo pedido
+       {kind:'alt', list}    pidió UFC y no hay: la pelea que sí hay
+       {kind:'none', info}   hoy no está: negativa honesta       */
+  function albertResolveEvent(query, fixtures){
+    var info = albEvQueryInfo(query);
+    var matched = [];
+    if(info.team){
+      matched = fixtures.filter(function(fx){ return albFxHasTeam(fx, info.team); });
+      if(!matched.length && info.team === 'ATLETICO MADRID'){
+        matched = fixtures.filter(function(fx){
+          return fx.teamSet.some(function(t){ return t.indexOf('ATLETICO') === 0; });
+        });
+      }
+    }
+    if(!matched.length && info.comp){
+      matched = fixtures.filter(function(fx){ return albFxCompMatch(fx, info.comp); });
+    }
+    if(!matched.length && (info.pelea || info.ufc)){
+      matched = fixtures.filter(function(fx){ return albFxIsPelea(fx); });
+    }
+    if(!matched.length && !info.team && !info.comp && !info.pelea && !info.ufc){
+      var phrase = albEvPhrase(query);
+      if(phrase) matched = fixtures.filter(function(fx){ return albFxPhraseMatch(fx, phrase); });
+    }
+    var sugg = albEvSuggestions(fixtures);
+    if(matched.length){
+      if(info.ufc && !matched.some(function(fx){ return /\bUFC\b/.test(fx.compHay); })){
+        return { kind: 'alt', list: matched, info: info, suggestions: sugg };
+      }
+      return { kind: 'match', list: matched, info: info, suggestions: sugg };
+    }
+    if(info.ufc){
+      var pelea = fixtures.filter(function(fx){ return albFxIsPelea(fx); });
+      if(pelea.length) return { kind: 'alt', list: pelea, info: info, suggestions: sugg };
+    }
+    return { kind: 'none', list: [], info: info, suggestions: sugg };
+  }
+  function albIsProtocol(a){
+    var ps = ['PONER_CANAL:', 'EVENTO:', 'EVENTO_INFO:'], i;
+    for(i = 0; i < ps.length; i++){
+      if(ps[i].indexOf(a) === 0 || a.indexOf(ps[i]) === 0) return true;
+    }
+    return false;
+  }
+  function albFmtTime(ms){
+    return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  var ALB_COMP_LABELS = { 'LALIGA': 'LaLiga', 'PREMIER LEAGUE': 'Premier League', 'CAF CHAMPIONS': 'la Champions de África (CAF)', 'BOX': 'Boxeo', 'LIGA MX': 'Liga MX', 'NCAA FOOTBALL': 'NCAA Football', 'BUNDESLIGA': 'Bundesliga', 'SERIE A': 'Serie A', 'LIBERTADORES': 'Libertadores', 'CHAMPIONS': 'la Champions', 'PREMIER': 'la Premier League', 'NBA': 'la NBA', 'NHL': 'la NHL', 'MLS': 'la MLS', 'NFL': 'la NFL' };
+  function albCompLabel(comp){ return ALB_COMP_LABELS[comp] || comp || ''; }
+  var ALB_TEAM_LABELS = { 'REAL MADRID': 'Real Madrid', 'ATLETICO MADRID': 'Atlético de Madrid', 'FCB': 'FC Barcelona', 'BARCELONA SC': 'Barcelona SC', 'MANCHESTER UNITED': 'Manchester United' };
+  function albTeamLabel(team){ return ALB_TEAM_LABELS[team] || team || ''; }
+  /* ==== FIN ALBERT-EVENTS ==== */
+
+  /* ==== ALBERT-SAFETY (extraíble para pruebas) ====
+     Red de seguridad de los eventos: un canal puede ANUNCIAR el
+     partido en su nombre y no estar dándolo. No podemos ver
+     dentro del vídeo para comprobarlo, así que la red es otra:
+     que el propio cliente vote SOBRE EL VÍDEO y APRENDER de
+     cada voto. Los botones son SOLO dos (orden de Sergio,
+     2026-11-28): «Sí es este evento» confirma la señal puesta y
+     «No es este evento» salta a la siguiente señal del mismo
+     evento y registra el rechazo — UNA sola clase de rechazo,
+     sin grados.
+     - albOrderVariants ordena las variantes de un evento: primero
+       las no rechazadas en este aparato (dentro de ellas manda
+       el neto de votos de HOY entre todos los clientes — rechazos
+       menos confirmaciones que expone el servicio de registro;
+       una señal confirmada por varios sube, una rechazada por
+       varios cae; a igual neto manda el orden del reproductor),
+       y al FINAL las que ESTE aparato ya rechazó para este
+       evento, en su orden de rechazo.
+     - albNextIdx busca la siguiente señal no rechazada.
+     - albIsRejectionPhrase reconoce, sin pasar por la IA, las
+       frases con las que el visitante avisa de que el canal
+       puesto no está dando el evento: equivalen al botón
+       «No es este evento». Y albIsConfirmPhrase reconoce la
+       confirmación escrita («este sí es», «sí es este»…):
+       equivale al botón «Sí es este evento». */
+  function albOrderVariants(fx, rejectedIds, rejCounts, confCounts){
+    var rej = {};
+    (rejectedIds || []).forEach(function(id, i){
+      if(rej[String(id)] === undefined) rej[String(id)] = i;
+    });
+    return fx.variants.map(function(v, i){ return { v: v, i: i }; }).sort(function(a, b){
+      var ra = rej[String(a.v.ch.streamId)], rb = rej[String(b.v.ch.streamId)];
+      var ka = (ra === undefined) ? 0 : 1, kb = (rb === undefined) ? 0 : 1;
+      if(ka !== kb) return ka - kb;
+      if(ka === 1) return (ra - rb) || (a.i - b.i);
+      var ka2 = fx.key + '|' + a.v.ch.streamId, kb2 = fx.key + '|' + b.v.ch.streamId;
+      var na = ((rejCounts && rejCounts[ka2]) || 0) - ((confCounts && confCounts[ka2]) || 0);
+      var nb = ((rejCounts && rejCounts[kb2]) || 0) - ((confCounts && confCounts[kb2]) || 0);
+      return (na - nb) || (a.i - b.i);
+    }).map(function(x){ return x.v; });
+  }
+  function albNextIdx(ids, rejectedIds, fromIdx){
+    var rej = {};
+    (rejectedIds || []).forEach(function(id){ rej[String(id)] = 1; });
+    var i;
+    for(i = fromIdx + 1; i < ids.length; i++){ if(!rej[String(ids[i])]) return i; }
+    for(i = 0; i < ids.length; i++){ if(i !== fromIdx && !rej[String(ids[i])]) return i; }
+    return -1;
+  }
+  var ALB_REJ_PHRASES = ['no lo esta dando', 'no lo estan dando', 'no lo esta pasando',
+    'no lo estan pasando', 'no lo dan', 'ese no es', 'esa no es', 'este no es',
+    'no es el partido', 'no es este partido', 'no es este', 'no es el juego',
+    'no es ese', 'no es esa', 'no es el canal', 'cambialo', 'cambiarlo', 'cambiala',
+    'cambia el canal', 'otra senal', 'otro canal', 'otra opcion',
+    'no sale el partido', 'no esta el partido', 'ahi no es', 'ese canal no'];
+  function albIsRejectionPhrase(text){
+    /* albEvNorm ya quitó acentos y puntuación: las palabras
+       quedan separadas por espacios, y la frase buscada debe
+       aparecer entera entre espacios. */
+    var t = ' ' + albEvNorm(text).toLowerCase() + ' ';
+    return ALB_REJ_PHRASES.some(function(p){ return t.indexOf(' ' + p + ' ') >= 0; });
+  }
+  var ALB_CONF_PHRASES = ['este si es', 'si es este', 'esta si es', 'si es esta',
+    'si es el partido', 'si es el evento', 'si es el juego',
+    'si lo esta dando', 'ya lo esta dando', 'este si lo esta dando',
+    'este es el bueno', 'este canal si es'];
+  function albIsConfirmPhrase(text){
+    var t = ' ' + albEvNorm(text).toLowerCase() + ' ';
+    return ALB_CONF_PHRASES.some(function(p){ return t.indexOf(' ' + p + ' ') >= 0; });
+  }
+  /* El canal FIJO de un portador («M+ LaLiga TV», «Sky Sports
+     Premier League»…), buscado SOLO entre canales que no son de
+     evento: la vía normal de canales sobre la lista completa
+     devolvería los propios canales de evento que traen el
+     portador en el nombre (¡incluso los de OTRO partido!), así
+     que primero se resuelve sobre el pool fijo y, si el nombre
+     del portador no casa tal cual (no hay un canal fijo que se
+     llame «M+ LaLiga TV»: el fijo es «LaLigaTV»), se prueba con
+     el núcleo del nombre — sin la «M»/«Movistar» inicial, sin el
+     país final, y en su forma pegada («laligatv»). */
+  function albCarrierPick(carrier, pool, H){
+    if(!carrier || !pool || !pool.length) return null;
+    var res = albertResolve(carrier, pool, H);
+    if(res.action === 'tune') return res.ch;
+    /* La norma del reproductor puede conservar signos («M+»):
+       los tokens se limpian a letras y números antes de armar
+       los núcleos, para que la «M+» inicial se reconozca como
+       la «M» de Movistar y se pueda retirar. */
+    var toks = H.norm(carrier).split(' ')
+      .map(function(t){ return t.replace(/[^a-z0-9]/g, ''); }).filter(Boolean);
+    var cores = [];
+    function add(s){
+      s = (s || '').replace(/\s+/g, ' ').trim();
+      if(s.length >= 4 && cores.indexOf(s) < 0) cores.push(s);
+    }
+    add(toks.join(' '));
+    var t2 = toks.slice();
+    if(t2[0] === 'm' || t2[0] === 'movistar') t2 = t2.slice(1);
+    add(t2.join(' '));
+    add(t2.join(''));
+    var t3 = toks.slice();
+    if(t3.length > 1 && ALB_COUNTRIES[t3[t3.length - 1]]) t3 = t3.slice(0, -1);
+    add(t3.join(' '));
+    add(t3.join(''));
+    add(toks.join(''));
+    for(var ci = 0; ci < cores.length; ci++){
+      var core = cores[ci], sq = core.replace(/ /g, '');
+      var ms = pool.filter(function(ch){
+        var nn = H.norm(ch.name);
+        return nn.indexOf(core) >= 0 || nn.replace(/ /g, '').indexOf(sq) >= 0;
+      });
+      if(ms.length){
+        ms.sort(function(a, b){
+          return ((b.isSpanish ? 1 : 0) - (a.isSpanish ? 1 : 0)) || (a.name.length - b.name.length);
+        });
+        return ms[0];
+      }
+    }
+    if(res.action === 'options' && res.list.length) return res.list[0];
+    return null;
+  }
+  /* ==== FIN ALBERT-SAFETY ==== */
+
   var panel = document.getElementById('alb-panel');
   var msgsEl = document.getElementById('alb-msgs');
   var form = document.getElementById('alb-form');
@@ -6622,6 +7123,7 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
 
   function openPanel(){
     opened = true;
+    fetchVoteCounts();
     panel.classList.add('alb-open');
     panel.setAttribute('aria-hidden', 'false');
     if(closePending){ closePending = false; msgsEl.innerHTML = ''; sysMsg(CLOSE_TEXT); greet(); }
@@ -6649,6 +7151,7 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
     return {
       norm: rp.norm, gKeyOf: rp.gKeyOf,
       isDead: function(ch){ return rp.isDead(ch); },
+      dailyEvents: function(){ return rp.dailyEvents ? rp.dailyEvents() : []; },
       catName: function(ch){ return rp.catName(ch); },
       countryOf: function(ch){
         if(rp.taxonomy.indexOf(ch.own) < 0) return ch.own || '';
@@ -6663,6 +7166,9 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
   }
   function tuneChannel(ch){
     var rp = RP(); if(!rp) return;
+    /* Un canal suelto (no la señal de un evento) desarma la red
+       de seguridad del evento que estuviera puesto. */
+    albClearNow();
     rp.play(ch);
     sayAsAlbert('Te puse «' + ch.name + '» (canal ' + (ch.number || '') + '). ¡A disfrutar!');
     setTimeout(closePanel, 900);
@@ -6727,6 +7233,539 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
     else done();
   }
 
+  /* ===== Eventos: de la orden de Albert a la sintonización ===== */
+  function buildEventFixtures(){
+    var rp = RP();
+    var list = (rp && rp.dailyEvents) ? rp.dailyEvents() : [];
+    return albertBuildFixtures(list, Date.now());
+  }
+  function albViaName(fx){
+    var v = albOrdered(fx)[0] || fx.variants[0];
+    return v.carrier ? v.carrier : ('su canal de evento (canal ' + (v.ch.number || '') + ')');
+  }
+  function albOthers(fx){
+    var seen = {}, out = [];
+    fx.variants.slice(1).forEach(function(v){
+      if(v.carrier && !seen[v.carrier]){ seen[v.carrier] = 1; out.push(v.carrier); }
+    });
+    return out.length ? ' También lo pasan: ' + out.slice(0, 3).join(', ') + '.' : '';
+  }
+  function albCompSuffix(fx){
+    return fx.comp ? ' (' + albCompLabel(fx.comp) + ')' : '';
+  }
+  function tuneFixture(fx, warn, note){
+    var rp = RP(); if(!rp) return;
+    var ordered = albOrdered(fx);
+    var v = ordered[0];
+    if(!v) return;
+    rp.play(v.ch);
+    /* La lista ordenada de señales de este evento queda ARMADA
+       (también al abrir por adelantado el canal de un evento
+       futuro): si el canal anuncia el partido pero no lo está
+       dando, los botones SOBRE EL VÍDEO («Sí es este evento» /
+       «No es este evento») —o decírselo a Albert— votan y, en
+       su caso, saltan a la siguiente señal de la lista. */
+    albSetNow(fx, ordered, 0);
+    var via = v.carrier ? (' por ' + v.carrier) : (' (canal ' + (v.ch.number || '') + ')');
+    sayAsAlbert('Te puse el ' + fx.label + via + '.' +
+      (warn ? ' Ojo: el evento empieza a las ' + albFmtTime(fx.startMs) + '.' : ' ¡A disfrutar!') + (note || ''));
+    setTimeout(closePanel, 900);
+  }
+  function showFixtureChips(list, wantTune){
+    var wrap = document.createElement('div');
+    wrap.className = 'alb-chips';
+    list.forEach(function(fx){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'alb-chip';
+      b.textContent = fx.label + (fx.state === 'live' ? ' · en vivo' :
+        (fx.state === 'future' ? ' · ' + albFmtTime(fx.startMs) : ' · ya terminó'));
+      b.addEventListener('click', function(){
+        wrap.querySelectorAll('button').forEach(function(x){ x.disabled = true; });
+        bubbleMsg('user', fx.label);
+        hist.push({ role: 'user', content: fx.label });
+        armIdle();
+        evOutcome(fx, wantTune, null);
+      });
+      wrap.appendChild(b);
+    });
+    msgsEl.appendChild(wrap);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+  function showActionChip(label, fn){
+    var wrap = document.createElement('div');
+    wrap.className = 'alb-chips';
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'alb-chip';
+    b.textContent = label;
+    b.addEventListener('click', function(){
+      b.disabled = true;
+      bubbleMsg('user', label);
+      hist.push({ role: 'user', content: label });
+      armIdle();
+      fn();
+    });
+    wrap.appendChild(b);
+    msgsEl.appendChild(wrap);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+  function evOutcome(fx, wantTune, sugg){
+    if(fx.state === 'live'){
+      if(wantTune){ tuneFixture(fx, false); return; }
+      sayAsAlbert('El ' + fx.label + albCompSuffix(fx) + ' está jugando ahora mismo: lo está pasando ' + albViaName(fx) + '.' + albOthers(fx));
+      showActionChip('Ponerlo ahora', function(){ tuneFixture(fx, false); });
+      albShowCarrierChip(albCarrierOf(fx), (albOrdered(fx)[0] || fx.variants[0]).ch.streamId);
+      return;
+    }
+    if(fx.state === 'future'){
+      sayAsAlbert('El ' + fx.label + albCompSuffix(fx) + ' es hoy a las ' + albFmtTime(fx.startMs) +
+        ' y lo pasa ' + albViaName(fx) + '. Todavía no empieza; si quieres, te abro el canal desde ya.' + albOthers(fx));
+      showActionChip('Abrir el canal ahora', function(){ tuneFixture(fx, true); });
+      albShowCarrierChip(albCarrierOf(fx), (albOrdered(fx)[0] || fx.variants[0]).ch.streamId);
+      return;
+    }
+    sayAsAlbert('El ' + fx.label + ' de hoy ya terminó (empezó a las ' + albFmtTime(fx.startMs) + ').');
+    if(sugg && sugg.length){
+      sayAsAlbert('Esto otro sigue hoy:');
+      showFixtureChips(sugg.filter(function(g){ return g !== fx; }).slice(0, 5), true);
+    }
+  }
+  function handleEventResult(res, out, wantTune){
+    out.remove();
+    if(res.kind === 'match'){
+      if(res.list.length === 1){ evOutcome(res.list[0], wantTune, res.suggestions); return; }
+      var live = res.list.filter(function(fx){ return fx.state === 'live'; });
+      if(wantTune && live.length === 1){
+        var fx = live[0];
+        var fut = res.list.filter(function(g){ return g !== fx && g.state === 'future'; });
+        var note = fut.length ? ' Y a las ' + albFmtTime(fut[0].startMs) + ' viene el ' + fut[0].label + '.' : '';
+        tuneFixture(fx, false, note);
+        return;
+      }
+      sayAsAlbert('Hay varios eventos para eso hoy. Toca el que quieres ver:');
+      showFixtureChips(res.list, wantTune);
+      return;
+    }
+    if(res.kind === 'alt'){
+      sayAsAlbert('Hoy no hay UFC en la cartelera de eventos. Lo que sí hay de pelea es boxeo:');
+      showFixtureChips(res.list, true);
+      return;
+    }
+    if(res.info && res.info.team){
+      sayAsAlbert('Hoy no juega el ' + albTeamLabel(res.info.team) + ': no está en los eventos del día.');
+    } else if(res.info && res.info.comp){
+      sayAsAlbert('Hoy no hay ' + albCompLabel(res.info.comp) + ' en los eventos del día.');
+    } else {
+      sayAsAlbert('No encontré ese evento en la cartelera de hoy.');
+    }
+    if(res.suggestions && res.suggestions.length){
+      sayAsAlbert('Lo más destacado de hoy:');
+      showFixtureChips(res.suggestions, true);
+    } else {
+      sayAsAlbert('Si quieres, dime un canal por su nombre (por ejemplo «pon ESPN Deportes») y te lo pongo.');
+    }
+  }
+  /* onNone (opcional): si lo pedido no es un evento de hoy, seguir
+     con otra vía (se usa cuando Albert emitió PONER_CANAL pero el
+     texto del usuario olía a evento: si tampoco es un evento, manda
+     la vía de canales). En la vía EVENTO la negativa es final: un
+     evento inventado no se convierte en un canal cualquiera. */
+  function handleEventOrder(queryText, out, userText, wantTune, onNone){
+    if(userText){
+      var qi = albEvQueryInfo(queryText), ui = albEvQueryInfo(userText);
+      if((ui.team && qi.team !== ui.team) || (ui.comp && !qi.comp) ||
+         ((ui.pelea || ui.ufc) && !qi.pelea && !qi.ufc)) queryText = userText;
+    }
+    var rp = RP();
+    out.innerHTML = '<span class="alb-typing">Revisando los eventos de hoy…</span>';
+    var done = function(){
+      /* Los conteos de rechazos de hoy (entre todos los clientes)
+         ayudan a ordenar las señales de cada evento; si aún no
+         llegaron, se sigue solo con el aprendizaje de este
+         aparato, sin hacer esperar al visitante. */
+      Promise.race([fetchVoteCounts(), sleep(800)]).then(function(){
+        var fixtures = buildEventFixtures();
+        if(!fixtures.length){
+          out.remove();
+          sayAsAlbert('Ahora mismo no tengo cargada la cartelera de eventos. Espera unos segundos y pídemelo otra vez.');
+          return;
+        }
+        var res = albertResolveEvent(queryText, fixtures);
+        if(res.kind === 'none' && onNone){ onNone(); return; }
+        handleEventResult(res, out, wantTune);
+      });
+    };
+    if(rp && (!rp.live() || !rp.live().master)){ rp.loadLive().then(done, done); }
+    else done();
+  }
+
+  /* ===== Red de seguridad de eventos: votos sobre el vídeo =====
+     La mecánica pura (ordenar variantes, buscar la siguiente,
+     reconocer las frases de voto) está en ALBERT-SAFETY; aquí
+     vive el estado y los efectos: el aprendizaje local de este
+     aparato (rechazos y confirmaciones), el reporte al servicio
+     de registro y la capa de botones SOBRE EL VÍDEO. */
+  var API_BASE = API.replace(/\/v1\/chat\/completions$/, '');
+
+  /* --- conteos globales de HOY (del servicio): rechazos y
+         confirmaciones por evento+canal entre todos los
+         clientes; el neto (rechazos − confirmaciones) ordena
+         las señales que este aparato aún no ha votado --- */
+  var albRejCounts = null, albConfCounts = null, albVotePromise = null;
+  function fetchVoteCounts(){
+    if(albRejCounts) return Promise.resolve(albRejCounts);
+    if(albVotePromise) return albVotePromise;
+    albVotePromise = fetch(API_BASE + '/rechazos-hoy')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){
+        albRejCounts = (j && j.counts) || {};
+        albConfCounts = (j && j.conf) || {};
+        return albRejCounts;
+      })
+      .catch(function(){ albRejCounts = {}; albConfCounts = {}; return albRejCounts; });
+    return albVotePromise;
+  }
+
+  /* --- aprendizaje local: por cuenta, como el resto del
+         reproductor (Favoritos y perfiles van por correo) --- */
+  function sessEmail(){
+    try{ var s = JSON.parse(localStorage.getItem('rager_sess') || 'null');
+      return (s && s.u) ? String(s.u).toLowerCase() : ''; }catch(_){ return ''; }
+  }
+  function albRejKey(){ var e = sessEmail(); return 'rager_albert_rechazos' + (e ? '_' + e : ''); }
+  function albRejLoad(){
+    try{ var j = JSON.parse(localStorage.getItem(albRejKey()) || '{}');
+      return (j && typeof j === 'object' && !Array.isArray(j)) ? j : {}; }catch(_){ return {}; }
+  }
+  function albRejSave(map){ try{ localStorage.setItem(albRejKey(), JSON.stringify(map)); }catch(_){} }
+  function albRejectedFor(fxKey){
+    var l = albRejLoad()[fxKey];
+    return Array.isArray(l) ? l.map(String) : [];
+  }
+  function albAddRejection(fxKey, streamId){
+    var map = albRejLoad();
+    var l = Array.isArray(map[fxKey]) ? map[fxKey].map(String) : [];
+    var id = String(streamId);
+    if(l.indexOf(id) < 0) l.push(id);
+    map[fxKey] = l;
+    albRejSave(map);
+  }
+  function albOrdered(fx){
+    return albOrderVariants(fx, albRejectedFor(fx.key), albRejCounts || {}, albConfCounts || {});
+  }
+
+  /* --- aprendizaje local de las CONFIRMACIONES: la otra cara
+         del voto, simétrica a los rechazos (misma clave de
+         cuenta). Confirmar una señal la rehabilita: sale de la
+         lista local de rechazos de ese evento, porque el voto
+         de ahora manda sobre el de antes. --- */
+  function albConfKey(){ var e = sessEmail(); return 'rager_albert_confirmados' + (e ? '_' + e : ''); }
+  function albConfLoad(){
+    try{ var j = JSON.parse(localStorage.getItem(albConfKey()) || '{}');
+      return (j && typeof j === 'object' && !Array.isArray(j)) ? j : {}; }catch(_){ return {}; }
+  }
+  function albConfSave(map){ try{ localStorage.setItem(albConfKey(), JSON.stringify(map)); }catch(_){} }
+  function albConfirmedFor(fxKey){
+    var l = albConfLoad()[fxKey];
+    return Array.isArray(l) ? l.map(String) : [];
+  }
+  function albAddConfirmation(fxKey, streamId){
+    var id = String(streamId);
+    var map = albConfLoad();
+    var l = Array.isArray(map[fxKey]) ? map[fxKey].map(String) : [];
+    if(l.indexOf(id) < 0) l.push(id);
+    map[fxKey] = l;
+    albConfSave(map);
+    var rmap = albRejLoad();
+    if(Array.isArray(rmap[fxKey])){
+      rmap[fxKey] = rmap[fxKey].map(String).filter(function(x){ return x !== id; });
+      albRejSave(rmap);
+    }
+    if(albConfCounts) albConfCounts[fxKey + '|' + id] = (albConfCounts[fxKey + '|' + id] || 0) + 1;
+  }
+  function albRemoveConfirmation(fxKey, streamId){
+    var id = String(streamId);
+    var map = albConfLoad();
+    if(Array.isArray(map[fxKey])){
+      map[fxKey] = map[fxKey].map(String).filter(function(x){ return x !== id; });
+      albConfSave(map);
+    }
+    if(albConfCounts && albConfCounts[fxKey + '|' + id])
+      albConfCounts[fxKey + '|' + id] = Math.max(0, albConfCounts[fxKey + '|' + id] - 1);
+  }
+
+  /* --- reporte al servicio de registro (el mismo de «Chats IA»):
+         cuenta (por su token, sin pedirle nada), evento y canal
+         votado. El rechazo va a /rechazos y la confirmación a
+         /confirmaciones: dos registros gemelos y el conteo de
+         hoy de ambos sale por /rechazos-hoy. Si el reporte
+         falla, el aprendizaje local sigue funcionando igual. --- */
+  function albReportRejection(sess, variant){
+    try{
+      fetch(API_BASE + '/rechazos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ site_token: sessToken(), conv: convId,
+          evento_key: sess.fxKey, evento_label: sess.label,
+          canal_id: String(variant.id), canal_nombre: variant.name })
+      }).catch(function(){});
+    }catch(_){}
+  }
+  function albReportConfirm(sess, variant){
+    try{
+      fetch(API_BASE + '/confirmaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ site_token: sessToken(), conv: convId,
+          evento_key: sess.fxKey, evento_label: sess.label,
+          canal_id: String(variant.id), canal_nombre: variant.name })
+      }).catch(function(){});
+    }catch(_){}
+  }
+
+  /* --- el evento puesto ahora mismo y su lista de señales ---
+     La sesión SOLO nace de una sintonización de Albert en esta
+     vida de la página (tuneFixture — también el «Abrir el canal
+     ahora» de un evento futuro — y los saltos entre señales).
+     No se guarda ni se restaura tras una recarga: tras recargar,
+     lo que el cliente abra es por su cuenta y no lleva botones,
+     que es exactamente la regla de Sergio. */
+  var albNow = null;
+  function albCarrierOf(fx){
+    for(var i = 0; i < fx.variants.length; i++){
+      if(fx.variants[i].carrier) return fx.variants[i].carrier;
+    }
+    return '';
+  }
+  function albSetNow(fx, ordered, idx){
+    var first = ordered[idx];
+    albNow = { fxKey: fx.key, label: fx.label, comp: fx.comp || '', startMs: fx.startMs,
+      carrier: albCarrierOf(fx),
+      variants: ordered.map(function(v){ return { id: String(v.ch.streamId), name: v.ch.name, carrier: v.carrier || '' }; }),
+      idx: idx,
+      /* Si este aparato ya había confirmado ESTA señal para
+         este evento, la sesión nace marcada como confirmada. */
+      confirmed: !!(first && albConfirmedFor(fx.key).indexOf(String(first.ch.streamId)) >= 0) };
+    albRenderEvBar();
+  }
+  function albClearNow(){
+    if(!albNow){ albRenderEvBar(); return; }
+    albNow = null;
+    albRenderEvBar();
+  }
+
+  /* --- la capa de botones SOBRE EL VÍDEO ---
+     Dos botones, y solo dos: «Sí es este evento» y «No es este
+     evento». La capa se crea dentro de la caja del vídeo y sigue
+     el ciclo de la botonera del reproductor: su clase .show se
+     copia de la barra (MutationObserver), así que aparece al
+     entrar y al tocar/mover, y se esconde sola a los 3 s como
+     los demás controles, sin tapar los centrales (va abajo,
+     sobre la barra). Y solo existe para el evento que puso
+     Albert: se desarma si el nombre en pantalla deja de ser el
+     de la señal armada o si se sale de la vista del reproductor
+     — si el cliente encuentra el canal solo, no hay botones. */
+  var evBar = null, evBarLabel = null, evYesBtn = null, evNoBtn = null;
+  /* Tras confirmar, la capa se cierra en el acto; esta marca la
+     mantiene fuera hasta que la botonera completa se esconde y
+     vuelve a salir: entonces reaparece, ya marcada confirmada. */
+  var albEvSuppressed = false;
+  function albRenderEvBar(){
+    if(!evBar) return;
+    if(!albNow){ evBar.classList.remove('show'); return; }
+    var cur = albNow.variants[albNow.idx];
+    evBarLabel.textContent = 'Albert te puso: ' + albNow.label + (cur ? ' · ' + cur.name : '');
+    if(albNow.confirmed){
+      evYesBtn.disabled = true;
+      evYesBtn.textContent = '✓ Es este evento';
+    } else {
+      evYesBtn.disabled = false;
+      evYesBtn.textContent = 'Sí es este evento';
+    }
+    albSyncEvBar();
+  }
+  function albSyncEvBar(){
+    if(!evBar) return;
+    if(!albNow){ evBar.classList.remove('show'); return; }
+    var cur = albNow.variants[albNow.idx];
+    var pn = document.getElementById('player-name');
+    if(cur && pn && pn.textContent && pn.textContent.indexOf(cur.name) < 0){
+      /* Lo que suena ya no es la señal que puso Albert (el
+         cliente cambió a otra cosa por su cuenta): se desarma. */
+      albClearNow();
+      return;
+    }
+    var vb = document.getElementById('vodbar');
+    var shown = !!(vb && vb.classList.contains('show'));
+    if(!shown){ albEvSuppressed = false; evBar.classList.remove('show'); return; }
+    if(albEvSuppressed){ evBar.classList.remove('show'); return; }
+    evBar.classList.add('show');
+  }
+  (function buildEvBar(){
+    var box = document.getElementById('video-box');
+    if(!box) return;
+    evBar = document.createElement('div');
+    evBar.id = 'alb-evbar';
+    evBar.setAttribute('role', 'group');
+    evBar.setAttribute('aria-label', 'Confirmar si el canal está dando el evento que puso Albert');
+    evBarLabel = document.createElement('div');
+    evBarLabel.id = 'alb-evbar-label';
+    var btns = document.createElement('div');
+    btns.id = 'alb-evbar-btns';
+    evYesBtn = document.createElement('button');
+    evYesBtn.type = 'button';
+    evYesBtn.id = 'alb-ev-yes';
+    evYesBtn.textContent = 'Sí es este evento';
+    evNoBtn = document.createElement('button');
+    evNoBtn.type = 'button';
+    evNoBtn.id = 'alb-ev-no';
+    evNoBtn.textContent = 'No es este evento';
+    btns.appendChild(evYesBtn);
+    btns.appendChild(evNoBtn);
+    evBar.appendChild(evBarLabel);
+    evBar.appendChild(btns);
+    box.appendChild(evBar);
+    /* Un toque en la capa no debe alternar la botonera (el
+       reproductor alterna mostrar/ocultar al tocar la caja del
+       vídeo, salvo dentro de sus propias barras): la capa se
+       queda con el toque, como las barras del reproductor. */
+    evBar.addEventListener('pointerdown', function(e){ e.stopPropagation(); });
+    evBar.addEventListener('click', function(e){ e.stopPropagation(); });
+    evYesBtn.addEventListener('click', function(){ albConfirm(); });
+    evNoBtn.addEventListener('click', function(){ albSkip(); });
+    if(window.MutationObserver){
+      var vb = document.getElementById('vodbar');
+      if(vb) new MutationObserver(albSyncEvBar).observe(vb, { attributes: true, attributeFilter: ['class'] });
+      var pn = document.getElementById('player-name');
+      if(pn) new MutationObserver(albSyncEvBar).observe(pn, { childList: true, characterData: true, subtree: true });
+      var vp = document.getElementById('view-player');
+      if(vp) new MutationObserver(function(){
+        /* Salir de la vista del reproductor desarma la capa:
+           volver al mismo canal por la cuenta del cliente ya
+           no es «Albert te lo puso». */
+        if(albNow && vp.classList.contains('hidden')) albClearNow();
+      }).observe(vp, { attributes: true, attributeFilter: ['class'] });
+    }
+  })();
+
+  function albTuneStreamId(id, cb){
+    var rp = RP(); if(!rp){ cb(null); return; }
+    function find(){
+      var live = rp.live();
+      if(live && live.master){
+        for(var i = 0; i < live.master.length; i++){
+          if(String(live.master[i].streamId) === String(id)) return live.master[i];
+        }
+      }
+      return null;
+    }
+    var ch = find();
+    if(ch){ rp.play(ch); cb(ch); return; }
+    rp.loadLive().then(function(){
+      var c2 = find();
+      if(c2) rp.play(c2);
+      cb(c2);
+    }, function(){ cb(null); });
+  }
+
+  /* El voto «Sí es este evento»: confirma la señal puesta, lo
+     registra en positivo (en este aparato y en el servicio,
+     para que cuente a favor al ordenar las señales de hoy) y
+     cierra la capa en el acto. Si el cliente vuelve a tocar la
+     pantalla y sigue en el evento, la capa reaparece con la
+     botonera, ya marcada como confirmada. */
+  function albConfirm(){
+    if(!albNow) return;
+    var sess = albNow, cur = sess.variants[sess.idx];
+    if(!cur || sess.confirmed) return;
+    sess.confirmed = true;
+    albAddConfirmation(sess.fxKey, cur.id);
+    albReportConfirm(sess, cur);
+    albEvSuppressed = true;
+    albRenderEvBar();
+    sayAsAlbert('¡Perfecto! Confirmado por ti: «' + cur.name + '» sí está dando el ' + sess.label + '. Queda anotado a su favor: la próxima vez esta señal saldrá con ventaja para este evento.');
+  }
+
+  /* El voto «No es este evento» (el botón del vídeo, o las
+     frases escritas en el chat): registra el rechazo de la
+     señal puesta —la única clase de rechazo que hay—, busca la
+     siguiente no rechazada y la sintoniza por la vía normal
+     del reproductor. Sin más señales: honestidad y las salidas
+     reales (el canal fijo del portador, u otros eventos de hoy
+     en vivo). Si la señal rechazada era justo la confirmada,
+     la confirmación se retira: el voto de ahora manda. */
+  function albSkip(){
+    if(!albNow) return;
+    var sess = albNow;
+    var cur = sess.variants[sess.idx];
+    if(!cur){ albClearNow(); return; }
+    if(sess.confirmed){
+      sess.confirmed = false;
+      albRemoveConfirmation(sess.fxKey, cur.id);
+    }
+    albAddRejection(sess.fxKey, cur.id);
+    albReportRejection(sess, cur);
+    if(albRejCounts) albRejCounts[sess.fxKey + '|' + cur.id] = (albRejCounts[sess.fxKey + '|' + cur.id] || 0) + 1;
+    var ids = sess.variants.map(function(v){ return v.id; });
+    var ni = albNextIdx(ids, albRejectedFor(sess.fxKey), sess.idx);
+    if(ni >= 0){
+      sess.idx = ni;
+      var target = sess.variants[ni];
+      albTuneStreamId(target.id, function(ch){
+        sayAsAlbert('Te lo cambié a otra señal del mismo evento: «' + (ch ? ch.name : target.name) + '». Si esta tampoco es el evento, dímelo y sigo con la siguiente.');
+        albRenderEvBar();
+        setTimeout(closePanel, 1200);
+      });
+      return;
+    }
+    var label = sess.label, carrier = sess.carrier, total = sess.variants.length, lastId = cur.id;
+    albClearNow();
+    sayAsAlbert('Ya probamos las ' + total + ' señales de «' + label + '» y en ninguna era este evento. Yo no puedo ver dentro del vídeo para comprobar qué pasa cada canal: solo puedo saltar de señal cuando me lo dices, como acabamos de hacer.');
+    if(!(carrier && albShowCarrierChip(carrier, lastId))){
+      var fixtures = buildEventFixtures();
+      var sugg = albEvSuggestions(fixtures).filter(function(g){ return g.key !== sess.fxKey && g.state === 'live'; });
+      if(sugg.length){
+        sayAsAlbert('Esto otro está en vivo ahora mismo:');
+        showFixtureChips(sugg.slice(0, 5), true);
+      } else {
+        sayAsAlbert('Si quieres, dime un canal por su nombre (por ejemplo «pon ESPN Deportes») y te lo pongo.');
+      }
+    }
+  }
+
+  /* --- el canal FIJO del portador, como red: se resuelve por la
+         vía normal de canales y se ofrece como botón --- */
+  function albCarrierChannel(carrier){
+    var rp = RP(); if(!rp || !carrier) return null;
+    var live = rp.live();
+    if(!live || !live.master || !live.master.length) return null;
+    var H = helpers();
+    var pool = live.master.filter(function(ch){ return !ch.isEvent && !H.isDead(ch); });
+    return albCarrierPick(carrier, pool, H);
+  }
+  function albShowCarrierChip(carrier, excludeId){
+    if(!carrier) return false;
+    var ch = albCarrierChannel(carrier);
+    if(!ch) return false;
+    if(excludeId !== undefined && excludeId !== null && String(ch.streamId) === String(excludeId)) return false;
+    showActionChip('El canal de ' + carrier, function(){
+      albClearNow();
+      var rp = RP(); if(rp) rp.play(ch);
+      sayAsAlbert('Te puse el canal de ' + carrier + ': «' + ch.name + '» (canal ' + (ch.number || '') + '). Es el canal fijo de quien transmite el evento.');
+      setTimeout(closePanel, 900);
+    });
+    return true;
+  }
+
+  /* Al cargar la página NO se restaura ninguna sesión de
+     evento (y se limpia cualquier resto de una versión anterior
+     de la previa): la capa de botones solo la arma Albert en
+     esta vida de la página, nunca una recarga. */
+  try{ sessionStorage.removeItem('alb_now_event'); }catch(_){}
+  albRenderEvBar();
+  fetchVoteCounts();
+
   function streamOnce(out){
     return new Promise(function(resolve, reject){
       var ctrl = ('AbortController' in window) ? new AbortController() : null;
@@ -6744,11 +7783,11 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
         var buf = '';
         out.textContent = '';
         function render(){
-          /* La línea de protocolo nunca se muestra: mientras la
-             respuesta pueda ser (el comienzo de) la orden de poner
-             un canal, se enseña el indicador de escritura. */
+          /* Las líneas de protocolo nunca se muestran: mientras la
+             respuesta pueda ser (el comienzo de) una orden de poner
+             un canal o un evento, se enseña el indicador. */
           var a = answer.replace(/^\s+/, '');
-          if(a === '' || 'PONER_CANAL:'.indexOf(a) === 0 || a.indexOf('PONER_CANAL:') === 0){
+          if(a === '' || albIsProtocol(a)){
             out.innerHTML = '<span class="alb-typing">Un momento…</span>';
           } else {
             out.textContent = answer;
@@ -6789,6 +7828,31 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
     e.preventDefault();
     var text = qEl.value.trim();
     if(!text || busy) return;
+    /* Votos escritos, SIN pasar por la IA: si hay un evento
+       puesto por Albert, lo que el visitante escriba puede ser
+       un voto sobre la señal. La confirmación («este sí es»,
+       «sí es este»…) equivale al botón «Sí es este evento»; el
+       aviso de que no lo está dando («ese no lo está dando»,
+       «no es el partido», «cámbialo»…) equivale al botón
+       «No es este evento» y salta a la siguiente señal en el
+       momento. La confirmación se mira primero: «este sí es»
+       no debe caer jamás en la vía de rechazo. */
+    if(albNow && albIsConfirmPhrase(text)){
+      qEl.value = '';
+      bubbleMsg('user', text);
+      hist.push({ role:'user', content: text });
+      armIdle();
+      albConfirm();
+      return;
+    }
+    if(albNow && albIsRejectionPhrase(text)){
+      qEl.value = '';
+      bubbleMsg('user', text);
+      hist.push({ role:'user', content: text });
+      armIdle();
+      albSkip();
+      return;
+    }
     busy = true; sendBtn.disabled = true; qEl.disabled = true; hideNote();
     bubbleMsg('user', text);
     qEl.value = '';
@@ -6811,12 +7875,29 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
           answer = await streamOnce(out);
         }
         if(!answer) throw new Error('sin respuesta');
+        var mEvInfo = /EVENTO_INFO:\s*(.+)/.exec(answer);
+        var mEv = /EVENTO:\s*(.+)/.exec(answer);
         var m = /PONER_CANAL:\s*(.+)/.exec(answer);
-        if(m){
+        if(mEvInfo){
+          /* Pregunta por un evento: Albert no afirma horas ni
+             canales; responde el reproductor con la cartelera. */
+          handleEventOrder(mEvInfo[1].trim(), out, text, false, null);
+        } else if(mEv){
+          handleEventOrder(mEv[1].trim(), out, text, true, null);
+        } else if(m){
           /* La orden no entra en el historial como texto de Albert:
              en su lugar queda la confirmación o las opciones que
-             el visitante sí ve. */
-          handlePlayOrder(m[1].trim(), out, text);
+             el visitante sí ve. Si el texto del usuario nombraba
+             un equipo, una competición o una pelea, se intenta
+             primero la vía de eventos con sus palabras. */
+          var qi = albEvQueryInfo(text);
+          if(qi.team || qi.comp || qi.pelea || qi.ufc){
+            handleEventOrder(text, out, text, true, function(){
+              handlePlayOrder(m[1].trim(), out, text);
+            });
+          } else {
+            handlePlayOrder(m[1].trim(), out, text);
+          }
         } else {
           out.textContent = answer;
           hist.push({ role:'assistant', content: answer });
@@ -6834,10 +7915,15 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
   });
 
   /* Para las pruebas de la previa y para quien integre el panel. */
-  window.RagerAlbertPanel = { open: openPanel, close: closePanel, resolve: albertResolve };
+  window.RagerAlbertPanel = { open: openPanel, close: closePanel, resolve: albertResolve,
+    resolveEvent: albertResolveEvent, buildFixtures: buildEventFixtures, parseEvent: albParseEvent,
+    orderVariants: albOrderVariants, nextIdx: albNextIdx, isRejection: albIsRejectionPhrase,
+    isConfirm: albIsConfirmPhrase, confirm: albConfirm,
+    skip: albSkip, nowEvent: function(){ return albNow; } };
 })();
 </script>
-<!-- ===== RAGER · ALBERT EN EL REPRODUCTOR (PREVIA) · fin ===== -->
+<!-- ===== RAGER · ALBERT EN EL REPRODUCTOR (PREVIA: canales y eventos) · fin ===== -->
+
 
 </body>
 </html>

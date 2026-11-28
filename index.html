@@ -899,7 +899,7 @@
       <button id="pm-favorites" class="pmenu-item" type="button" role="menuitem">Favoritos</button>
       <button id="pm-account" class="pmenu-item" type="button" role="menuitem">Mi cuenta</button>
       <button id="pm-hist" class="pmenu-item rg-chat-hist" type="button" role="menuitem">Mis chats</button>
-      <button id="pm-help" class="pmenu-item rg-chat-open rg-chat-ayuda" type="button" role="menuitem">Ayuda</button>
+      <button id="pm-help" class="pmenu-item rg-chat-open rg-chat-ayuda" type="button" role="menuitem">Contactar a soporte</button>
       <button id="pm-panel" class="pmenu-item hidden" type="button" role="menuitem">Panel</button>
       <button id="pm-chat" class="pmenu-item hidden" type="button" role="menuitem">Chat</button>
       <button id="pm-logout" class="pmenu-item danger" type="button" role="menuitem">Cerrar sesión</button>
@@ -5609,6 +5609,20 @@
     // Si ya hay una sesión activa al volver a la pestaña, no repetir el splash largo.
     if(loadSession()){ setTimeout(finishSplash, 1200); }
   });
+  /* Gancho de Albert en el reproductor (PREVIA): expone lo mínimo
+     para que su panel resuelva y sintonice canales por la vía
+     normal (playLiveChannel respeta directos/convertidos y el
+     aprendizaje por aparato, igual que al tocar un canal). */
+  window.RagerAlbert = {
+    live: function(){ return S.live; },
+    loadLive: function(){ return loadLiveData(); },
+    play: function(ch){ playLiveChannel(ch); },
+    isDead: function(ch){ return isDeadChannel(ch); },
+    norm: norm, gKeyOf: gKeyOf,
+    countryOfName: countryOfName, countryOfCat: countryOfCat,
+    catName: function(ch){ return (S.live && S.live.catName[String(ch.categoryId)]) || ""; },
+    taxonomy: TAXONOMY
+  };
 })();
 </script>
 <script>
@@ -5911,8 +5925,11 @@ function loadHist(){
   if(acct) p = fetch(BASE + "/myhistory", { headers: { "Authorization": "Bearer " + acct.token } }).then(function(r){ return r.json(); });
   else p = fetch(BASE + "/myhistory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: convIds }) }).then(function(r){ return r.json(); });
   p.then(function(j){
-    var chats = (j && j.chats) || [];
-    if(!chats.length){ list.innerHTML = "<p style='color:#b9b9c4;font-size:14px;text-align:center;padding:12px 4px'>Todavía no tienes chats guardados.</p>"; return; }
+    /* «Mis chats» (orden de Sergio): SOLO los chats pasados de la
+       cuenta (finalizados/cerrados); la activa no es un chat pasado.
+       Y si no hay ninguno, la lista sale VACIA, sin ningun texto. */
+    var chats = ((j && j.chats) || []).filter(function(it){ return !!it.finalizada; });
+    if(!chats.length){ list.innerHTML = ""; return; }
     list.innerHTML = "";
     chats.forEach(function(it){
       var b = document.createElement("button"); b.type = "button"; b.className = "rgc-hi";
@@ -6347,6 +6364,480 @@ function closeProfileMenuSafe(){ var m = document.getElementById("profile-menu")
   }
 })();
 </script>
+
+<!-- ===== RAGER · ALBERT EN EL REPRODUCTOR (PREVIA: Albert puede poner canales en vivo) · inicio ===== -->
+<style>
+/* Burbuja flotante de Albert (misma identidad visual que en el sitio:
+   círculo negro, borde rojo e insignia «IA»). z-index 100 a propósito:
+   queda sobre el contenido de navegación y POR DEBAJO de las capas
+   completas del propio reproductor (vista de vídeo 150, menú y splash
+   200, modales 120, vídeo forzado a horizontal 400), así que durante la
+   reproducción —vista de vídeo, horizontal forzado o pantalla completa
+   real— la burbuja queda cubierta/fuera, como las demás capas del
+   reproductor, y reaparece al volver a navegar. */
+#alb-bubble{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:100;width:58px;height:58px;border-radius:50%;background:#0b0b0e;border:2px solid #e53935;box-shadow:0 8px 24px rgba(0,0,0,.45);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;-webkit-tap-highlight-color:transparent}
+#alb-bubble:hover{filter:brightness(1.25)}
+#alb-badge{position:absolute;top:-5px;right:-5px;background:#e53935;color:#fff;font-size:10px;font-weight:800;letter-spacing:.04em;border-radius:999px;padding:2px 6px;line-height:1.25;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+#alb-panel{position:fixed;top:0;right:0;bottom:0;z-index:1600;width:min(400px,95vw);background:#050507;color:#f8f8fa;border-left:1px solid #2b2b33;box-shadow:-18px 0 50px rgba(0,0,0,.55);display:flex;flex-direction:column;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;transform:translateX(105%);transition:transform .25s ease;visibility:hidden}
+#alb-panel.alb-open{transform:none;visibility:visible}
+#alb-head{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px;background:#030609;border-bottom:1px solid #26262e}
+#alb-title{display:flex;flex-direction:column;line-height:1.2}
+#alb-brand{font-weight:900;font-size:18px;letter-spacing:.28em;color:#e53935}
+#alb-sub{font-size:12px;color:#a3a3ad}
+#alb-close{flex:0 0 auto;width:36px;height:36px;border-radius:50%;border:1px solid #3a3a44;background:transparent;color:#f8f8fa;font-size:21px;line-height:1;cursor:pointer;padding:0}
+#alb-close:hover{border-color:#e53935;color:#ffb3b0}
+#alb-msgs{flex:1 1 auto;overflow-y:auto;padding:14px 12px 8px;display:flex;flex-direction:column;gap:10px}
+.alb-msg{max-width:88%;padding:10px 13px;border-radius:14px;font-size:15px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.alb-msg.a{background:#17171d;border:1px solid #26262e;align-self:flex-start;border-bottom-left-radius:4px}
+.alb-msg.u{background:#5f1214;border:1px solid #8c1d1d;align-self:flex-end;border-bottom-right-radius:4px}
+.alb-msg.err{background:#2a0f10;border-color:#8c1d1d;color:#ffb3b0}
+.alb-msg.sys{align-self:center;max-width:94%;background:transparent;border:1px dashed #5a2323;color:#ffb3b0;font-size:13.5px;text-align:center}
+.alb-typing{color:#a3a3ad;font-style:italic}
+.alb-chips{align-self:flex-start;display:flex;flex-wrap:wrap;gap:8px;max-width:96%}
+.alb-chip{background:#0f0f13;color:#f8f8fa;border:1px solid #8c1d1d;border-radius:999px;padding:9px 14px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+.alb-chip:hover,.alb-chip:focus-visible{background:#5f1214;border-color:#e53935;outline:none}
+#alb-note{flex:0 0 auto;margin:0;padding:8px 12px;font-size:12.5px;line-height:1.4;color:#ffb3b0;background:#2a0f10;border-top:1px solid #5a2323}
+#alb-hint{flex:0 0 auto;margin:0;padding:7px 14px 0;font-size:12px;color:#7d7d88}
+#alb-form{flex:0 0 auto;display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#030609}
+#alb-q{flex:1;background:#0f0f13;color:#f8f8fa;border:1px solid #2b2b33;border-radius:10px;padding:12px;font-size:16px;outline:none;font-family:inherit;min-width:0}
+#alb-q:focus{border-color:#e53935}
+#alb-send{background:#e53935;color:#fff;border:none;border-radius:10px;padding:12px 16px;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit}
+#alb-send:disabled{background:#5a2323;color:#caa;cursor:wait}
+</style>
+<button id="alb-bubble" type="button" aria-label="Hablar con Albert, el asistente de Rager" aria-haspopup="dialog">
+  <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+  <span id="alb-badge">IA</span>
+</button>
+<section id="alb-panel" role="dialog" aria-label="Albert, asistente de Rager" aria-hidden="true">
+  <header id="alb-head">
+    <div id="alb-title"><span id="alb-brand">Albert</span><span id="alb-sub">Asistente de Rager · Pídeme un canal en vivo</span></div>
+    <button id="alb-close" type="button" aria-label="Cerrar a Albert">&times;</button>
+  </header>
+  <div id="alb-msgs"></div>
+  <p id="alb-note" hidden></p>
+  <p id="alb-hint">También puedo ponerte un canal: dime «pon ESPN Deportes» o «quiero ver noticias de México».</p>
+  <form id="alb-form">
+    <input id="alb-q" type="text" placeholder="Escribe tu pregunta…" autocomplete="off" enterkeyhint="send">
+    <button id="alb-send" type="submit">Enviar</button>
+  </form>
+</section>
+<script>
+(function(){
+  'use strict';
+  /* Ruta de la IA en esta PREVIA (la misma pieza que registra en
+     «Chats IA» y reenvía a Albert). Al publicar se cambia esta sola
+     línea por la ruta definitiva. */
+  var API = 'https://puente.ragerservices.net/rager/bot/registro/api/v1/chat/completions';
+  var KB = "Eres Albert, el asistente de ayuda de Rager (ragerservices.net), un servicio de televisión por internet. Te llamas Albert: si te preguntan cómo te llamas o quién eres, responde que eres Albert, el asistente de Rager. Respondes en español, breve, claro y amable.\n\nREGLAS:\n- Solo puedes afirmar datos que estén en esta base de conocimiento.\n- Si te preguntan algo que no está aquí (una película concreta, un precio distinto, el estado de una cuenta), di que no tienes ese dato y ofrece el WhatsApp de soporte humano: +1 (570) 469-8339. Para los canales manda la sección CANALES de más abajo.\n- Nunca inventes precios, códigos, pasos ni canales.\n- Nunca pidas contraseñas ni datos de pago.\n\nCANALES (recomendaciones):\n- Cuando el cliente pregunte por canales (de un país, de deportes, infantiles, de noticias, un canal concreto…), el sistema te entrega junto a la conversación unos «DATOS DEL CATÁLOGO» con resultados reales de nuestro catálogo de canales en vivo. Recomienda SOLO los canales y categorías que vengan en esos datos, con los nombres tal como están escritos.\n- Recomienda pocas opciones y buenas (un puñado, no listas interminables), agrupadas por país o por tema si ayuda, y menciona cuántos canales hay en la categoría cuando el dato venga. Si la pregunta es muy amplia, ofrece afinar: «¿de qué país?» o «¿qué deporte buscas?».\n- Si los datos dicen que no hubo coincidencias con lo que pide (por ejemplo, un canal concreto que no aparece), dilo con honestidad: ese canal no está en nuestro catálogo. Nunca inventes un canal ni digas que lo tenemos si no está en los datos. Ofrécele el chat con una persona en «Contactar a soporte» (está en el menú del sitio y del reproductor).\n- Los datos son de canales en vivo: no afirmes horarios ni qué programa está pasando si los datos no lo traen.\n- Si en una pregunta de canales NO te llegan datos del catálogo, no recomiendes canales de memoria: di que en este momento no puedes consultar el catálogo y ofrece «Contactar a soporte».\n\nPLANES (todos incluyen canales en vivo, películas y series):\n- Silver: $10.99 por mes, 3 dispositivos.\n- Gold: $25.99 por 3 meses, 3 dispositivos.\n- Platinum: $45.99 por 6 meses, 5 dispositivos.\nNo hay otros planes ni otras cantidades de dispositivos.\nReferidos: quien recomienda Rager gana el 25% de cada venta y de cada renovación de sus referidos.\n\nCUENTA RAGER:\n- La cuenta se crea en ragerservices.net.\n- La app y el reproductor web entran con el correo y la contraseña de tu cuenta Rager. No necesitas ningún usuario ni contraseña de línea, ni escribir ningún servidor: eso ya no se usa.\n- Si olvidaste tu contraseña, usa el enlace de recuperación de la pantalla de acceso: te llega un correo con un enlace válido por 1 hora.\n\nLA APP RAGER:\n- Funciona en Android (teléfono y tablet), Android TV y Fire TV.\n- Instalación en Fire TV y Android TV: abre la aplicación Downloader, escribe el código 3890011 y sigue las instrucciones para descargar e instalar la app. Después ábrela y entra con tu cuenta Rager.\n- En Android también puedes descargar la app desde ragerservices.net.\n- El código de Downloader es 3890011.\n\nAPARATOS QUE NO ACEPTAN LA APP:\n- Los Fire TV más nuevos (con Vega OS), el iPhone, el iPad, el Apple TV, las teles Samsung y LG y los Roku no pueden instalar la app.\n- En esos aparatos Rager se ve en el navegador con el reproductor web: ver.ragerservices.net, entrando con la misma cuenta Rager.\n- Otra opción es usar el enlace personal de tu cuenta en un reproductor de terceros compatible; si necesitas el tuyo, pídelo por el WhatsApp de soporte.\n\nSI UN CANAL NO CARGA:\n1. Revisa tu conexión a internet.\n2. Cierra la app o el reproductor y vuelve a abrirlo.\n3. Comprueba en «Mi cuenta» que tu suscripción esté vigente.\n4. Si sigue igual, escribe al WhatsApp de soporte: +1 (570) 469-8339.\n\nSI LA APP PIDE ACTUALIZAR:\n- En el aviso de actualización, toca «Actualizar» y espera a que la app descargue e instale la nueva versión. No desinstales nada.\n- El botón «Ahora no» pospone el aviso 24 horas.\n- Si la actualización falla, instala la app de nuevo con Downloader y el código 3890011.\n\nRENOVAR:\n- Para renovar, usa el botón «Renovar suscripción» de tu cuenta o escribe directamente al WhatsApp de soporte: +1 (570) 469-8339.\n\nSOPORTE HUMANO: WhatsApp +1 (570) 469-8339, también desde el sitio principal ragerservices.net.\n";
+  /* MODO REPRODUCTOR: la orden de poner un canal viaja como una línea
+     de protocolo que SOLO entiende esta página; Albert nunca confirma
+     la reproducción, de eso se encarga el reproductor al recibirla. */
+  var MODO = "\n\nMODO REPRODUCTOR (SOLO en esta página):\nEstás dentro del reproductor web de Rager y el usuario puede pedirte que pongas un canal en vivo.\n- Si el usuario te pide poner, ver, sintonizar o abrir un canal en vivo, o un tema o un país de canales (ejemplos: «pon ESPN Deportes», «quiero ver un canal de noticias de México», «pásame a deportes»), responde ÚNICAMENTE con esta línea y nada más, sin saludos ni explicaciones:\nPONER_CANAL: <el canal, tema o país que pidió, con tus palabras>\n- Si el usuario responde con el nombre de un canal después de que le ofreciste opciones, o elige una opción, usa la misma línea con ese nombre.\n- Si solo pide una recomendación o información sobre canales SIN pedir que lo pongas, responde normal, sin esa línea.\n- Solo puedes poner canales en vivo. Si pide una película o una serie, dile que desde aquí solo puedes poner canales en vivo y que la busque en las secciones de Películas o Series del reproductor; no uses la línea para eso.\n- Nunca digas que ya pusiste un canal ni confirmes la reproducción: de ponerlo se encarga el reproductor cuando recibe tu línea.";
+  var SYS = KB + MODO;
+
+  /* ==== ALBERT-RESOLVER (extraíble para pruebas) ====
+     Resuelve lo pedido contra la lista maestra de canales en vivo
+     del propio reproductor (la misma que usa su buscador), con la
+     normalización del reproductor (norm/gKeyOf) y su clasificación
+     (own = tema o país; isSpanish; isEvent). Devuelve:
+       {action:'tune', ch}        una coincidencia clara: sintonizar
+       {action:'options', list}   varias candidatas: ofrecer a elegir
+       {action:'none'}            no existe: negativa honesta       */
+  var ALB_STOP = {el:1,la:1,los:1,las:1,un:1,una:1,unos:1,unas:1,de:1,del:1,en:1,al:1,a:1,con:1,por:1,favor:1,canal:1,canales:1,pon:1,ponme:1,ponlo:1,ponla:1,quiero:1,ver:1,veo:1,sintoniza:1,sintonizar:1,abre:1,abrir:1,pasame:1,pasa:1,ese:1,esa:1,eso:1,otro:1,otra:1,mi:1,me:1,te:1,se:1,lo:1,le:1,les:1,que:1,y:1,o:1,tv:1,elcanal:1};
+  var ALB_THEMES = [
+    { own:'Deportes', words:['deporte','deportes','futbol','football','soccer','baloncesto','basquetbol','basket','tenis','beisbol','baseball','boxeo','ufc','nfl','nba','mlb','formula'] },
+    { own:'Noticias', words:['noticia','noticias','noticiero','noticieros','informativo','informativos','actualidad'] },
+    { own:'Infantil', words:['infantil','infantiles','ninos','nino','kids','dibujos','caricaturas','animados'] },
+    { own:'Música', words:['musica','musical','musicales','conciertos'] },
+    { own:'Películas y Cine', words:['peliculas','pelicula','cine'] },
+    { own:'Series y Novelas', words:['series','serie','novelas','novela','telenovelas','telenovela'] },
+    { own:'Cultura y Documentales', words:['documental','documentales','cultura','culturales','historia','naturaleza'] },
+    { own:'Religión', words:['religion','religiosos','religiosa','cristianos','cristiano','evangelicos','catolicos','iglesia','iglesias'] },
+    { own:'Farándula y Entretenimiento', words:['farandula','entretenimiento','espectaculos','chismes'] },
+    { own:'Radios', words:['radio','radios'] },
+    { own:'Variedades', words:['variedades','variedad'] }
+  ];
+  var ALB_COUNTRIES = { mexico:'México', espana:'España', colombia:'Colombia', argentina:'Argentina', chile:'Chile', peru:'Perú', venezuela:'Venezuela', ecuador:'Ecuador', bolivia:'Bolivia', paraguay:'Paraguay', uruguay:'Uruguay', panama:'Panamá', costarica:'Costa Rica', nicaragua:'Nicaragua', honduras:'Honduras', guatemala:'Guatemala', elsalvador:'El Salvador', cuba:'Cuba', dominicana:'República Dominicana', republicadominicana:'República Dominicana', puertorico:'Puerto Rico', estadosunidos:'Estados Unidos', eeuu:'Estados Unidos', usa:'Estados Unidos', brasil:'Brasil', brazil:'Brasil' };
+  var ALB_NEWS_NAME = /(notic|foro|milenio|adn|imagen|teleformula|heraldo|unotv|nmas|informativ)/;
+  function albertResolve(query, master, H){
+    var q = String(query || '').trim();
+    if(!q || !master || !master.length) return { action:'none' };
+    var qNorm = H.norm(q), qKey = H.gKeyOf(q);
+    var toks = qNorm.split(/\s+/).filter(Boolean);
+    var content = toks.filter(function(t){ return !ALB_STOP[t]; });
+    var alive = master.filter(function(ch){ return !H.isDead(ch); });
+    function keyOf(ch){ return H.gKeyOf(ch.name); }
+    function groupByKey(list){
+      var seen = {}, out = [];
+      list.forEach(function(ch){ var k = keyOf(ch); if(!seen[k]){ seen[k] = 1; out.push(ch); } });
+      return out;
+    }
+    function score(ch){
+      var s = 0;
+      if(H.norm(ch.name) === qNorm) s += 8;
+      if(ch.isSpanish) s += 4;
+      if(!ch.isEvent) s += 2;
+      return s;
+    }
+    function bestOf(list){
+      var best = null, bs = -1;
+      list.forEach(function(ch){ var s = score(ch); if(s > bs){ bs = s; best = ch; } });
+      return best;
+    }
+    function rank(list){
+      return list.slice().sort(function(a, b){ return score(b) - score(a) || (a.number || 0) - (b.number || 0); });
+    }
+    /* A) Nombre exacto por la clave del reproductor (sin prefijos ni
+       coletillas de calidad): todas las variantes de un mismo canal
+       comparten clave, así que se sintoniza su mejor variante. */
+    if(qKey){
+      var exact = alive.filter(function(ch){ return keyOf(ch) === qKey; });
+      if(exact.length) return { action:'tune', ch: bestOf(exact) };
+    }
+    /* B) El nombre contiene lo pedido (o al revés, con la clave). */
+    if(qNorm.length >= 3){
+      var sub = alive.filter(function(ch){
+        var nn = H.norm(ch.name);
+        return nn.indexOf(qNorm) >= 0 || (qKey && keyOf(ch).indexOf(qKey) >= 0);
+      });
+      var subKeys = groupByKey(sub);
+      if(subKeys.length === 1) return { action:'tune', ch: bestOf(sub) };
+      if(subKeys.length > 1) return { action:'options', list: rank(subKeys).slice(0, 6) };
+    }
+    /* C) Todas las palabras con contenido están en el nombre. */
+    if(content.length){
+      var tok = alive.filter(function(ch){
+        var nn = ' ' + H.norm(ch.name) + ' ';
+        return content.every(function(t){ return nn.indexOf(' ' + t) >= 0 || H.norm(ch.name).indexOf(t) >= 0; });
+      });
+      var tokKeys = groupByKey(tok);
+      if(tokKeys.length === 1) return { action:'tune', ch: bestOf(tok) };
+      if(tokKeys.length > 1) return { action:'options', list: rank(tokKeys).slice(0, 6) };
+    }
+    /* D) Tema y/o país: se detectan en lo pedido; lo que sobre de
+       nombre sirve de filtro dentro del grupo. */
+    var theme = null, country = null, usedWords = {};
+    ALB_THEMES.forEach(function(th){
+      th.words.forEach(function(w){ if(content.indexOf(w) >= 0){ theme = th.own; usedWords[w] = 1; } });
+    });
+    var joined = content.join('');
+    Object.keys(ALB_COUNTRIES).forEach(function(k){ if(joined.indexOf(k) >= 0){ country = ALB_COUNTRIES[k]; } });
+    content.forEach(function(t){ if(ALB_COUNTRIES[t]){ country = ALB_COUNTRIES[t]; usedWords[t] = 1; } });
+    if(theme || country){
+      var rest = content.filter(function(t){ return !usedWords[t] && !ALB_COUNTRIES[t]; });
+      var pool = alive.filter(function(ch){
+        if(country && H.norm(H.countryOf(ch) || '') !== H.norm(country)) return false;
+        if(theme){
+          if(ch.own === theme) return true;
+          if(theme === 'Noticias' && ALB_NEWS_NAME.test(H.norm(ch.name))) return true;
+          if(H.norm(H.catName(ch) || '').indexOf(H.norm(theme)) >= 0) return true;
+          return false;
+        }
+        return true;
+      });
+      if(rest.length){
+        var filtered = pool.filter(function(ch){
+          var nn = H.norm(ch.name);
+          return rest.every(function(t){ return nn.indexOf(t) >= 0; });
+        });
+        if(filtered.length) pool = filtered;
+      }
+      var poolKeys = groupByKey(pool);
+      if(poolKeys.length === 1) return { action:'tune', ch: poolKeys[0] };
+      if(poolKeys.length > 1) return { action:'options', list: rank(poolKeys).slice(0, 6) };
+    }
+    return { action:'none' };
+  }
+  /* ==== FIN ALBERT-RESOLVER ==== */
+
+  var panel = document.getElementById('alb-panel');
+  var msgsEl = document.getElementById('alb-msgs');
+  var form = document.getElementById('alb-form');
+  var qEl = document.getElementById('alb-q');
+  var sendBtn = document.getElementById('alb-send');
+  var noteEl = document.getElementById('alb-note');
+  var closeBtn = document.getElementById('alb-close');
+  var hist = [{ role:'system', content: SYS }];
+  /* Registro («Chats IA»): id de conversación propio y sello por
+     envío; la identidad sale del token de la sesión del reproductor
+     (el mismo que la página ya guarda), nunca se pide nada. */
+  function newConvId(){ return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); }
+  var convId = '';
+  try{ convId = sessionStorage.getItem('alb_conv') || ''; }catch(_){}
+  if(!convId){ convId = newConvId(); try{ sessionStorage.setItem('alb_conv', convId); }catch(_){} }
+  var curMid = '';
+  function sessToken(){
+    try{ var s = JSON.parse(localStorage.getItem('rager_sess') || 'null'); if(s && s.t) return s.t; }catch(_){}
+    return '';
+  }
+  var busy = false, opened = false, greeted = false;
+  /* Cierre por inactividad (misma regla que el Albert del sitio):
+     5 minutos sin mensajes cierran la conversación y la descartan. */
+  var IDLE_MS = 300000, IDLE_RECHECK_MS = 30000;
+  var CLOSE_TEXT = 'Cerré esta conversación por inactividad (5 minutos sin mensajes). Escríbeme de nuevo cuando quieras y empezamos otra.';
+  var idleTimer = null, closePending = false;
+  function armIdle(ms){
+    if(idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(onIdle, ms || IDLE_MS);
+  }
+  function onIdle(){
+    idleTimer = null;
+    if(busy){ armIdle(IDLE_RECHECK_MS); return; }
+    if(hist.length <= 1) return;
+    closeConversation();
+  }
+  function sysMsg(text){
+    var d = document.createElement('div');
+    d.className = 'alb-msg sys';
+    d.textContent = text;
+    msgsEl.appendChild(d);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+    return d;
+  }
+  function greet(){
+    greeted = true;
+    bubbleMsg('assistant', 'Hola, soy Albert, el asistente de Rager. Pregúntame por los planes, la app o tu cuenta… y si quieres, dime «pon» y un canal en vivo y te lo pongo aquí mismo: «pon ESPN Deportes», «quiero ver noticias de México».');
+  }
+  function closeConversation(){
+    hist = [{ role:'system', content: SYS }];
+    convId = newConvId();
+    try{ sessionStorage.setItem('alb_conv', convId); }catch(_){}
+    curMid = '';
+    hideNote();
+    msgsEl.innerHTML = '';
+    if(opened){ sysMsg(CLOSE_TEXT); greet(); }
+    else { greeted = false; closePending = true; }
+  }
+  function bubbleMsg(role, text){
+    var d = document.createElement('div');
+    d.className = 'alb-msg ' + (role === 'user' ? 'u' : 'a');
+    d.textContent = text;
+    msgsEl.appendChild(d);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+    return d;
+  }
+  function showNote(t){ noteEl.textContent = t; noteEl.hidden = false; }
+  function hideNote(){ noteEl.hidden = true; noteEl.textContent = ''; }
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+
+  function openPanel(){
+    opened = true;
+    panel.classList.add('alb-open');
+    panel.setAttribute('aria-hidden', 'false');
+    if(closePending){ closePending = false; msgsEl.innerHTML = ''; sysMsg(CLOSE_TEXT); greet(); }
+    else if(!greeted){ greet(); }
+    setTimeout(function(){ try{ qEl.focus({ preventScroll:true }); }catch(_){ qEl.focus(); } }, 60);
+  }
+  function closePanel(){
+    opened = false;
+    panel.classList.remove('alb-open');
+    panel.setAttribute('aria-hidden', 'true');
+  }
+  closeBtn.addEventListener('click', closePanel);
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && opened) closePanel(); });
+  /* Si se abre el chat humano de soporte, Albert se cierra. */
+  document.addEventListener('click', function(e){
+    if(opened && e.target && e.target.closest && e.target.closest('.rg-chat-open')) closePanel();
+  });
+  /* Albert entra SOLO por su burbuja flotante (sin entrada en el menú). */
+  var bubble = document.getElementById('alb-bubble');
+  if(bubble) bubble.addEventListener('click', openPanel);
+
+  function RP(){ return window.RagerAlbert || null; }
+  function helpers(){
+    var rp = RP(); if(!rp) return null;
+    return {
+      norm: rp.norm, gKeyOf: rp.gKeyOf,
+      isDead: function(ch){ return rp.isDead(ch); },
+      catName: function(ch){ return rp.catName(ch); },
+      countryOf: function(ch){
+        if(rp.taxonomy.indexOf(ch.own) < 0) return ch.own || '';
+        var c = rp.countryOfName(ch.name) || rp.countryOfCat(rp.catName(ch));
+        return (c && c !== 'Variedades') ? c : '';
+      }
+    };
+  }
+  function sayAsAlbert(text){
+    bubbleMsg('assistant', text);
+    hist.push({ role:'assistant', content: text });
+  }
+  function tuneChannel(ch){
+    var rp = RP(); if(!rp) return;
+    rp.play(ch);
+    sayAsAlbert('Te puse «' + ch.name + '» (canal ' + (ch.number || '') + '). ¡A disfrutar!');
+    setTimeout(closePanel, 900);
+  }
+  function showOptions(list, queryText){
+    sayAsAlbert('Encontré varios canales para «' + queryText + '». Toca el que quieres poner:');
+    var wrap = document.createElement('div');
+    wrap.className = 'alb-chips';
+    list.forEach(function(ch){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'alb-chip';
+      b.textContent = ch.name;
+      b.addEventListener('click', function(){
+        wrap.querySelectorAll('button').forEach(function(x){ x.disabled = true; });
+        bubbleMsg('user', ch.name);
+        hist.push({ role:'user', content: ch.name });
+        armIdle();
+        tuneChannel(ch);
+      });
+      wrap.appendChild(b);
+    });
+    msgsEl.appendChild(wrap);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+  /* Si lo que Albert reescribió perdió el país que el usuario sí
+     dijo (o el tema entero), manda lo que el usuario escribió: el
+     resolutor lo entiende igual de bien y no se cuela un canal de
+     otro país o de otro tema que Albert haya podido suponer. */
+  function albDetect(text){
+    var H = helpers(); if(!H) return {};
+    var toks = H.norm(text).split(/\s+/).filter(function(t){ return t && !ALB_STOP[t]; });
+    var theme = null, country = null, joined = toks.join('');
+    ALB_THEMES.forEach(function(th){ th.words.forEach(function(w){ if(toks.indexOf(w) >= 0) theme = th.own; }); });
+    Object.keys(ALB_COUNTRIES).forEach(function(k){ if(joined.indexOf(k) >= 0) country = ALB_COUNTRIES[k]; });
+    toks.forEach(function(t){ if(ALB_COUNTRIES[t]) country = ALB_COUNTRIES[t]; });
+    return { theme: theme, country: country };
+  }
+  function handlePlayOrder(queryText, out, userText){
+    if(userText){
+      var du = albDetect(userText), dq = albDetect(queryText);
+      if((du.country && dq.country !== du.country) || (du.theme && !dq.theme)) queryText = userText;
+    }
+    var rp = RP();
+    out.innerHTML = '<span class="alb-typing">Buscando ese canal…</span>';
+    var done = function(){
+      var live = rp && rp.live();
+      if(!live || !live.master || !live.master.length){
+        out.remove();
+        sayAsAlbert('Todavía no tengo cargada la lista de canales. Espera unos segundos y pídemelo otra vez.');
+        return;
+      }
+      var res = albertResolve(queryText, live.master, helpers());
+      out.remove();
+      if(res.action === 'tune'){ tuneChannel(res.ch); }
+      else if(res.action === 'options'){ showOptions(res.list, queryText); }
+      else {
+        sayAsAlbert('No encontré «' + queryText + '» entre los canales en vivo. Puedo intentarlo con otro nombre, o dime un tema o un país (por ejemplo «deportes» o «noticias de México»). Y si prefieres, en «Contactar a soporte» te ayuda una persona.');
+      }
+    };
+    if(rp && (!rp.live() || !rp.live().master)){ rp.loadLive().then(done, done); }
+    else done();
+  }
+
+  function streamOnce(out){
+    return new Promise(function(resolve, reject){
+      var ctrl = ('AbortController' in window) ? new AbortController() : null;
+      var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, 120000) : null;
+      var answer = '';
+      fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: ctrl ? ctrl.signal : undefined,
+        body: JSON.stringify({ model:'rager-bot', stream:true, temperature:0.2, max_tokens:600, messages: hist, site_token: sessToken(), conv: convId, msg_id: curMid })
+      }).then(function(res){
+        if(!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+        var reader = res.body.getReader();
+        var decoder = new TextDecoder();
+        var buf = '';
+        out.textContent = '';
+        function render(){
+          /* La línea de protocolo nunca se muestra: mientras la
+             respuesta pueda ser (el comienzo de) la orden de poner
+             un canal, se enseña el indicador de escritura. */
+          var a = answer.replace(/^\s+/, '');
+          if(a === '' || 'PONER_CANAL:'.indexOf(a) === 0 || a.indexOf('PONER_CANAL:') === 0){
+            out.innerHTML = '<span class="alb-typing">Un momento…</span>';
+          } else {
+            out.textContent = answer;
+          }
+          msgsEl.scrollTop = msgsEl.scrollHeight;
+        }
+        function pump(){
+          return reader.read().then(function(step){
+            if(step.done){ if(timer) clearTimeout(timer); resolve(answer); return; }
+            if(timer){ clearTimeout(timer); timer = null; }
+            buf += decoder.decode(step.value, { stream:true });
+            var idx;
+            while((idx = buf.indexOf('\n')) >= 0){
+              var line = buf.slice(0, idx).trim();
+              buf = buf.slice(idx + 1);
+              if(line.indexOf('data:') !== 0) continue;
+              var data = line.slice(5).trim();
+              if(data === '[DONE]') continue;
+              try{
+                var j = JSON.parse(data);
+                var delta = j.choices && j.choices[0] && j.choices[0].delta;
+                if(delta && delta.content){
+                  answer += delta.content;
+                  render();
+                  armIdle();
+                }
+              }catch(_){ /* fragmento parcial */ }
+            }
+            return pump();
+          });
+        }
+        return pump();
+      }).catch(function(err){ if(timer) clearTimeout(timer); reject(err); });
+    });
+  }
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    var text = qEl.value.trim();
+    if(!text || busy) return;
+    busy = true; sendBtn.disabled = true; qEl.disabled = true; hideNote();
+    bubbleMsg('user', text);
+    qEl.value = '';
+    hist.push({ role:'user', content: text });
+    armIdle();
+    curMid = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+    var out = bubbleMsg('assistant', '');
+    out.innerHTML = '<span class="alb-typing">Un momento…</span>';
+    (async function(){
+      var answer = '';
+      try{
+        try{
+          answer = await streamOnce(out);
+        }catch(firstErr){
+          showNote('Albert está atendiendo a otra persona. Lo intento de nuevo en unos segundos…');
+          out.innerHTML = '<span class="alb-typing">En espera…</span>';
+          await sleep(4000);
+          hideNote();
+          out.innerHTML = '<span class="alb-typing">Un momento…</span>';
+          answer = await streamOnce(out);
+        }
+        if(!answer) throw new Error('sin respuesta');
+        var m = /PONER_CANAL:\s*(.+)/.exec(answer);
+        if(m){
+          /* La orden no entra en el historial como texto de Albert:
+             en su lugar queda la confirmación o las opciones que
+             el visitante sí ve. */
+          handlePlayOrder(m[1].trim(), out, text);
+        } else {
+          out.textContent = answer;
+          hist.push({ role:'assistant', content: answer });
+        }
+      }catch(err){
+        out.classList.add('err');
+        out.textContent = 'Ahora mismo no he podido responder. Inténtalo de nuevo en unos segundos.';
+        hist.pop();
+      }finally{
+        busy = false; sendBtn.disabled = false; qEl.disabled = false;
+        armIdle();
+        if(opened) qEl.focus();
+      }
+    })();
+  });
+
+  /* Para las pruebas de la previa y para quien integre el panel. */
+  window.RagerAlbertPanel = { open: openPanel, close: closePanel, resolve: albertResolve };
+})();
+</script>
+<!-- ===== RAGER · ALBERT EN EL REPRODUCTOR (PREVIA) · fin ===== -->
 
 </body>
 </html>

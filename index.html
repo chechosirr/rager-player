@@ -3825,10 +3825,7 @@
   function videoEl(){ return $("video"); }
   function stopPlayer(){
     var v = videoEl();
-    try{ v.pause(); }catch(e){}
-    if(hls){ try{ hls.destroy(); }catch(e){} hls = null; }
-    v.removeAttribute("src");
-    try{ v.load(); }catch(e){}
+    detachSource();
     if(P.saveTimer){ clearInterval(P.saveTimer); P.saveTimer = null; }
     if(P.dialTimer){ clearTimeout(P.dialTimer); P.dialTimer = null; }
     P.dialStr = "";
@@ -3856,6 +3853,33 @@
     exitForceLand();
     var pe = $("player-err"); pe.className = "player-err"; pe.textContent = "";
     P.open = false;
+  }
+  /* DESMONTAJE COMPLETO de la fuente montada (arreglo 2026-11-27:
+     «se montan dos reproductores a la vez»). El elemento de video es
+     UNO solo, pero lo alimentan DOS mecanismos — la fuente nativa
+     (v.src) y hls.js (MediaSource) — y el desmontaje anterior era
+     parcial: al pasar de la ruta nativa a hls.js, attachMedia se
+     montaba sobre el elemento SIN pausarlo ni vaciar su fuente
+     nativa (la señal anterior podía seguir sonando por el elemento
+     mientras hls.js cargaba la suya: dos reproductores montados
+     sobre el mismo elemento), y los oyentes «error»/«loadedmetadata»
+     de cada ruta nativa quedaban armados ({once:true} sin retirar)
+     pudiendo disparar sobre la ruta siguiente. Desde ahora, TODA
+     montura (attachSource) y todo cierre (stopPlayer) pasan primero
+     por aquí: se destruye hls.js, se retiran los oyentes de la ruta
+     anterior, se pausa el elemento y se vacía su fuente. Nunca
+     quedan dos mecanismos vivos a la vez. */
+  function detachSource(){
+    var v = videoEl();
+    if(hls){ try{ hls.destroy(); }catch(e){} hls = null; }
+    if(P.nativeHandlers){
+      try{ v.removeEventListener("loadedmetadata", P.nativeHandlers.meta); }catch(e){}
+      try{ v.removeEventListener("error", P.nativeHandlers.err); }catch(e){}
+      P.nativeHandlers = null;
+    }
+    try{ v.pause(); }catch(e){}
+    try{ v.removeAttribute("src"); }catch(e){}
+    try{ v.load(); }catch(e){}
   }
   /* Intro con el logo antes de reproducir (pedido de Sergio, 3-nov):
      aparece SOLO la palabra RAGER en rojo sobre negro (pedido de
@@ -4305,7 +4329,9 @@
   }
   function attachSource(url, altUrl){
     var v = videoEl();
-    if(hls){ try{ hls.destroy(); }catch(e){} hls = null; }
+    // Antes de montar CUALQUIER ruta se desmonta por completo la
+    // anterior (ver detachSource): un solo reproductor montado.
+    detachSource();
     // Generación de esta fuente: cada attachSource abre una nueva.
     // Los avisos de error de una fuente ANTERIOR llegan tarde (el
     // elemento de video es el mismo y sus oyentes «error» quedan
@@ -4485,19 +4511,33 @@
         : (P.kind === "live" ? { maxBufferLength: 30, liveSyncDurationCount: 1, liveMaxLatencyDurationCount: 3, maxLiveSyncPlaybackRate: 1.5, abrEwmaDefaultEstimate: 200000 }
                              : { maxBufferLength: 30 });
       hls = new Hls(hlsCfg);
+      var myHls = hls;
       hls.loadSource(url);
       hls.attachMedia(v);
-      hls.on(Hls.Events.MANIFEST_PARSED, function(){ tryResume(); P.metaReady = true; updateVodBar(); v.play().catch(function(){}); });
-      hls.on(Hls.Events.ERROR, function(ev, data){ if(data && data.fatal) onFatal(data.type === Hls.ErrorTypes.MEDIA_ERROR); });
+      // Guarda de instancia: si esta instancia ya fue desmontada
+      // (cambio de ruta o de canal), sus avisos tardíos no pueden
+      // arrancar ni tumbar la reproducción que la sustituyó.
+      hls.on(Hls.Events.MANIFEST_PARSED, function(){ if(hls !== myHls || P.attachSeq !== mySeq) return; tryResume(); P.metaReady = true; updateVodBar(); v.play().catch(function(){}); });
+      hls.on(Hls.Events.ERROR, function(ev, data){ if(hls !== myHls) return; if(data && data.fatal) onFatal(data.type === Hls.ErrorTypes.MEDIA_ERROR); });
     } else if(isHls && !(v.canPlayType("application/vnd.apple.mpegurl")) && !(window.Hls && Hls.isSupported())){
       // Ni HLS nativo ni la librería hls.js (que va incluida en la
       // propia página): sin ninguno de los dos no hay forma de
       // reproducir la señal; se dice claro en vez del error genérico.
       playerFail("No se pudo cargar el reproductor de video. Revisa tu conexión y recarga la página.");
     } else if(isHls || isRemux || v.canPlayType("application/vnd.apple.mpegurl") || /\.(mp4|m4v|mov|webm)($|\?)/i.test(url)){
+      // Los oyentes de ESTA ruta quedan registrados en
+      // P.nativeHandlers para que detachSource() los retire al
+      // desmontar (antes quedaban armados con {once:true} y un
+      // aviso tardío de la ruta vieja caía sobre la nueva), y
+      // llevan la guarda de generación: si ya no son la ruta
+      // vigente, no tocan nada. Se arman ANTES de poner la fuente
+      // para no perder un error inmediato.
+      var onMeta = function(){ if(P.attachSeq !== mySeq) return; tryResume(); P.metaReady = true; updateVodBar(); };
+      var onErr = function(){ if(P.attachSeq !== mySeq) return; try{ P.srcErrCode = v.error ? (v.error.code || 0) : 0; }catch(e){} onFatal(); };
+      P.nativeHandlers = { meta: onMeta, err: onErr };
+      v.addEventListener("loadedmetadata", onMeta, { once: true });
+      v.addEventListener("error", onErr, { once: true });
       v.src = url;
-      v.addEventListener("loadedmetadata", function(){ tryResume(); P.metaReady = true; updateVodBar(); }, { once: true });
-      v.addEventListener("error", function(){ try{ P.srcErrCode = v.error ? (v.error.code || 0) : 0; }catch(e){} onFatal(); }, { once: true });
       v.play().catch(function(){});
     } else {
       playerFail("Tu navegador no puede reproducir este formato de video. Prueba con un navegador actualizado (Chrome, Edge, Firefox o Safari).");
@@ -5651,6 +5691,17 @@ body.rg-gated>#rg-chat.rgc-hidden{display:none!important}
 .rgc-lobby button{background:transparent;color:#7db3f0;border:1px solid rgba(125,179,240,.55);border-radius:10px;padding:11px 18px;font-weight:700;cursor:pointer;font-size:15px;font-family:inherit;width:100%}
 .rgc-lobby.rgc-hidden{display:none!important}
 .rgc-histnew{margin-top:auto;background:transparent;color:#7db3f0;border:1px solid rgba(125,179,240,.55);border-radius:10px;padding:10px;font-weight:700;cursor:pointer;font-size:14px;font-family:inherit;width:100%}
+.rgc-sys{align-self:center;background:transparent;color:#9aa3b2;font-size:12.5px;text-align:center;max-width:92%;padding:2px 8px;line-height:1.4}
+.rga-card{align-self:center;background:#1b1b22;border:1px solid #3a3a48;border-radius:14px;padding:12px 14px;max-width:92%;color:#f2f2f5}
+.rga-card p{margin:0 0 10px;font-size:14px;line-height:1.45}
+.rga-btns{display:flex;gap:8px}
+.rga-btns button{flex:1;border-radius:10px;padding:10px;font-weight:800;cursor:pointer;font-size:14.5px;font-family:inherit}
+.rga-ok{background:#e0342f;color:#fff;border:0}
+.rga-no{background:transparent;color:#f2f2f5;border:1px solid #3a3a48}
+.rga-bar{display:flex;align-items:center;gap:10px;padding:9px 14px;background:#3a1414;color:#ffd7d4;font-size:13.5px;border-bottom:1px solid #5a2323}
+.rga-bar button{margin-left:auto;background:#e0342f;color:#fff;border:0;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px}
+.rga-bar.rgc-hidden{display:none!important}
+
 #rg-welcome{position:fixed;inset:0;z-index:3000;background:#0c0c10;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 #rg-welcome.rgc-hidden{display:none!important}
 body.rg-gated>#rg-welcome{display:flex!important}
@@ -5662,6 +5713,7 @@ body.rg-gated>#rg-welcome.rgc-hidden{display:none!important}
   <div class="rgc-box">
     <div class="rgc-head"><span>Ayuda · Rager</span><button id="rgc-close" type="button" aria-label="Cerrar chat">×</button></div>
     <p class="rgc-note">Escríbenos y te respondemos por aquí.</p>
+    <div id="rga-bar" class="rga-bar rgc-hidden"><span>Estás compartiendo tu pantalla con soporte.</span><button id="rga-stop" type="button">Dejar de compartir</button></div>
     <div id="rgc-lobby" class="rgc-lobby rgc-hidden">
       <p>Para hablar con nosotros, toca el botón <b>«Iniciar un chat nuevo»</b>: ahí se abre tu conversación y te respondemos por aquí.</p>
       <button id="rgc-lobbynew" type="button">Iniciar un chat nuevo</button>
@@ -5688,7 +5740,7 @@ body.rg-gated>#rg-welcome.rgc-hidden{display:none!important}
 "use strict";
 var BASE = "https://puente.ragerservices.net/rager/chat";
 var ADMIN_PANEL = "https://puente.ragerservices.net/admin";
-var ADMIN_CHAT = "https://puente.ragerservices.net/rager/chat/admin";
+var ADMIN_CHAT = "https://puente.ragerservices.net/rager/chat/admin/asistencia";
 function $(id){ return document.getElementById(id); }
 function ls(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
@@ -5713,6 +5765,7 @@ function siteToken(){
 }
 function activeConv(){ return acct ? acctConv : conv; }
 function render(m){
+  if(m && typeof m.t === "string" && m.t.indexOf(RGA_PREFIX) === 0){ rgaRender(m); return; }
   var box = $("rgc-msgs"); if(!box) return;
   var d = document.createElement("div");
   d.className = "rgc-m " + (m.f === "a" ? "a" : "v");
@@ -5740,6 +5793,12 @@ function syncGate(){
   var gate = $("rgc-gate"), msgs = $("rgc-msgs"), form = $("rgc-form");
   var lb = $("rgc-lobby"); if(lb) lb.classList.toggle("rgc-hidden", !lobby);
   var started = !!myName || !!acct;
+  /* Con sesión en el reproductor pero la cuenta aún resolviéndose,
+     el formulario NO se enseña: quien ya inició sesión no lo llena
+     (orden de Sergio); se espera a que la cuenta resuelva. Si la
+     cuenta no se pudo resolver (acctFailedTok), el formulario
+     queda como respaldo para que pueda chatear igual. */
+  var pending = !started && !!siteToken() && acctFailedTok !== siteToken();
   if(lobby){
     if(gate) gate.classList.add("rgc-hidden");
     if(msgs) msgs.classList.add("rgc-hidden");
@@ -5751,7 +5810,7 @@ function syncGate(){
     var hs0 = $("rgc-hist"); if(hs0) hs0.classList.add("rgc-hidden");
     return;
   }
-  if(gate) gate.classList.toggle("rgc-hidden", started || histOpen || !!viewing);
+  if(gate) gate.classList.toggle("rgc-hidden", started || histOpen || !!viewing || pending);
   if(msgs) msgs.classList.toggle("rgc-hidden", !started || histOpen);
   if(form) form.classList.toggle("rgc-hidden", !started || finalizada || histOpen || !!viewing);
   var fb = $("rgc-finbar"); if(fb) fb.classList.toggle("rgc-hidden", !(started && activeConv() && !finalizada && !histOpen && !viewing));
@@ -5785,11 +5844,14 @@ function openChat(){
   var c = $("rg-chat"); if(!c) return;
   c.classList.remove("rgc-hidden");
   histOpen = false; viewing = null; lobby = false;
+  /* Si hay sesión pero la cuenta aún no se resolvió, se resuelve
+     ahora mismo: el formulario no se enseña a quien ya entró. */
+  if(!acct && siteToken()){ sessChecked = ""; playerAdminCheck(); }
   syncGate();
   if(activeConv()) poll(true); else ensureOpen();
   if(timer) clearInterval(timer);
   timer = setInterval(function(){ if(activeConv()) poll(false); else ensureOpen(); }, 4000);
-  var f = (myName || acct) ? $("rgc-input") : $("rgc-name");
+  var f = (myName || acct) ? $("rgc-input") : (siteToken() ? null : $("rgc-name"));
   if(f) setTimeout(function(){ try{ f.focus(); }catch(e){} }, 60);
 }
 /* Entrada «Ayuda» (orden de Sergio): picar Ayuda NO crea ningún
@@ -5807,9 +5869,10 @@ function openLobby(){
 }
 function lobbyStart(){
   lobby = false;
+  if(!acct && siteToken()){ sessChecked = ""; playerAdminCheck(); }
   syncGate();
   if(activeConv()){ seen = 0; poll(true); } else ensureOpen();
-  var f = (myName || acct) ? $("rgc-input") : $("rgc-name");
+  var f = (myName || acct) ? $("rgc-input") : (siteToken() ? null : $("rgc-name"));
   if(f) setTimeout(function(){ try{ f.focus(); }catch(e){} }, 60);
 }
 function closeChat(){
@@ -5933,6 +5996,212 @@ if(form) form.addEventListener("submit", function(e){
       else poll(false);
     }).catch(function(){});
 });
+/* ===== Asistencia remota (PREVIA): soporte ve la pantalla del cliente =====
+   Protocolo por el propio canal del chat: mensajes de texto con el
+   prefijo RGA1| + JSON. Eventos: req/acc/rej/err/end y la SDP en
+   trozos (sdp): el servidor limita cada mensaje a 1000 caracteres
+   y a 1 s entre mensajes de la conversacion, asi que la SDP viaja
+   en trozos y la senalizacion sale por una cola con espera y
+   reintento. WebRTC de una sola via (el cliente comparte; soporte
+   solo mira). Nada se graba. La comparticion solo arranca tras el
+   «Aceptar» del cliente Y el permiso del sistema (getDisplayMedia). */
+var RGA_PREFIX = "RGA1|";
+var RGA_ICE = { iceServers: [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: ["turn:puente.ragerservices.net:3478?transport=udp", "turn:puente.ragerservices.net:3478?transport=tcp"], username: "ragerprev", credential: "b52aec60fd1d3238e8cfb157" }
+] };
+var rgaSessions = {};
+var rgaAnsweredIds = {};
+try{ JSON.parse(ls("rga_answered") || "[]").forEach(function(x){ rgaAnsweredIds[x] = 1; }); }catch(e){}
+var rgaFastTimer = null;
+function rgaMarkAnswered(id){ rgaAnsweredIds[id] = 1; try{ lsSet("rga_answered", JSON.stringify(Object.keys(rgaAnsweredIds).slice(-40))); }catch(e){} }
+function rgaSysLine(txt){
+  var box = $("rgc-msgs"); if(!box) return null;
+  var d = document.createElement("div"); d.className = "rgc-sys"; d.textContent = txt;
+  box.appendChild(d); box.scrollTop = box.scrollHeight; return d;
+}
+function rgaAnyOpen(){ for(var k in rgaSessions){ var s = rgaSessions[k]; if(s && (s.st === "pending" || s.st === "active" || s.st === "connecting")) return true; } return false; }
+function rgaBusyOther(exceptId){
+  for(var k in rgaSessions){ if(k !== exceptId){ var s = rgaSessions[k]; if(s && (s.st === "pending" || s.st === "active" || s.st === "connecting")) return true; } }
+  return false;
+}
+function rgaFastPoll(){
+  if(rgaAnyOpen() && !rgaFastTimer){
+    rgaFastTimer = setInterval(function(){
+      var c = $("rg-chat");
+      if(c && !c.classList.contains("rgc-hidden") && !viewing) poll(false);
+      if(!rgaAnyOpen()){ clearInterval(rgaFastTimer); rgaFastTimer = null; }
+    }, 1500);
+  }
+}
+/* Envio con cola: el servidor exige >=1 s entre mensajes de la
+   conversacion y max. 8/min por IP; los trozos de SDP van en cola
+   con 1.15 s de separacion y reintento si responde 429. */
+var rgaQueue = [], rgaSending = false;
+function rgaSend(obj){ rgaQueue.push(obj); if(!rgaSending){ rgaSending = true; rgaDrain(); } }
+function rgaDrain(){
+  var obj = rgaQueue.shift();
+  if(obj === undefined){ rgaSending = false; return; }
+  var tries = 0;
+  (function attempt(){
+    tries++;
+    var body;
+    if(acct){ body = { text: RGA_PREFIX + JSON.stringify(obj), auth: acct.token }; if(acctConv) body.conv = acctConv; }
+    else { body = { name: myName, text: RGA_PREFIX + JSON.stringify(obj) }; if(myContact) body.contact = myContact; if(conv) body.conv = conv; }
+    fetch(BASE + "/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function(r){ if(r.status === 429 && tries < 6){ setTimeout(attempt, 3000); return; } setTimeout(rgaDrain, 1150); })
+      .catch(function(){ if(tries < 6){ setTimeout(attempt, 3000); return; } setTimeout(rgaDrain, 1150); });
+  })();
+}
+function rgaSendSdp(id, ty, sdp){
+  var SL = 740, n = Math.ceil(sdp.length / SL), i;
+  for(i = 0; i < n; i++) rgaSend({ k: "sdp", id: id, ty: ty, i: i, n: n, d: sdp.slice(i * SL, (i + 1) * SL) });
+}
+function rgaWaitIce(pc){
+  return new Promise(function(res){
+    if(pc.iceGatheringState === "complete") return res();
+    var to = setTimeout(done, 4500);
+    function done(){ try{ pc.removeEventListener("icegatheringstatechange", h); }catch(e){} clearTimeout(to); res(); }
+    function h(){ if(pc.iceGatheringState === "complete") done(); }
+    pc.addEventListener("icegatheringstatechange", h);
+  });
+}
+function rgaShowBar(show){ var b = $("rga-bar"); if(b) b.classList.toggle("rgc-hidden", !show); }
+function rgaCleanup(id){
+  var S = rgaSessions[id]; if(!S) return;
+  if(S.pc){ try{ S.pc.close(); }catch(e){} S.pc = null; }
+  if(S.stream){ S.stream.getTracks().forEach(function(t){ try{ t.stop(); }catch(e){} }); S.stream = null; }
+  S.st = "done"; rgaShowBar(false);
+}
+function rgaEnd(id, fromRemote){
+  var S = rgaSessions[id]; if(!S || S.st === "done") return;
+  rgaCleanup(id);
+  if(!fromRemote) rgaSend({ k: "end", id: id });
+  rgaSysLine(fromRemote ? "Soporte terminó la asistencia. Ya no puede ver tu pantalla." : "Dejaste de compartir tu pantalla.");
+}
+function rgaAccept(id){
+  var S = rgaSessions[id]; if(!S || S.answered) return;
+  S.answered = true; rgaMarkAnswered(id);
+  var card = $("rga-card-" + id); if(card) card.remove();
+  if(!window.RTCPeerConnection || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
+    rgaSend({ k: "err", id: id, msg: "En este navegador no se puede compartir la pantalla." });
+    rgaSysLine("Este navegador no puede compartir la pantalla. Para que soporte la vea, abre la app de Rager.");
+    S.st = "done"; return;
+  }
+  rgaSysLine("Aceptaste. El aparato te pedirá confirmar qué pantalla compartes.");
+  navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 20 } }, audio: false })
+  .then(function(stream){
+    S.stream = stream; S.st = "connecting"; rgaShowBar(true); rgaFastPoll();
+    rgaSend({ k: "acc", id: id });
+    var pc = new RTCPeerConnection(RGA_ICE); S.pc = pc;
+    stream.getTracks().forEach(function(t){
+      pc.addTrack(t, stream);
+      t.addEventListener("ended", function(){ if(S.st !== "done") rgaEnd(id, false); });
+    });
+    pc.addEventListener("iceconnectionstatechange", function(){
+      if(pc.iceConnectionState === "failed"){ rgaSysLine("La conexión de asistencia se cortó."); rgaEnd(id, false); }
+    });
+    pc.createOffer().then(function(off){ return pc.setLocalDescription(off); })
+    .then(function(){ return rgaWaitIce(pc); })
+    .then(function(){
+      if(S.st === "done") return;
+      S.st = "active";
+      rgaSendSdp(id, "offer", pc.localDescription.sdp);
+    })
+    .catch(function(){ rgaSysLine("No se pudo iniciar la compartición."); rgaCleanup(id); });
+  })
+  .catch(function(){
+    if(S.st === "done") return;
+    rgaSend({ k: "err", id: id, msg: "El cliente canceló la selección de pantalla." });
+    rgaSysLine("Cancelaste la compartición de pantalla.");
+    S.st = "done"; rgaShowBar(false);
+  });
+}
+function rgaReject(id){
+  var S = rgaSessions[id]; if(!S || S.answered) return;
+  S.answered = true; rgaMarkAnswered(id);
+  var card = $("rga-card-" + id); if(card) card.remove();
+  rgaSend({ k: "rej", id: id });
+  rgaSysLine("Rechazaste la solicitud de asistencia.");
+  S.st = "done";
+}
+function rgaRender(m){
+  var o = null;
+  try{ o = JSON.parse(m.t.slice(RGA_PREFIX.length)); }catch(e){}
+  if(!o || !o.k || !o.id) return;
+  var id = o.id, S = rgaSessions[id];
+  if(o.k === "sdp"){
+    /* Transporte puro: sin linea visible. Solo me importa la
+       respuesta (answer) dirigida a mi sesion en curso. */
+    if(m.f === "a" && o.ty === "answer" && S && S.pc && (S.st === "connecting" || S.st === "active")){
+      S.parts = S.parts || {}; S.parts[o.i] = o.d;
+      if(Object.keys(S.parts).length >= o.n){
+        var sdp = "", i; for(i = 0; i < o.n; i++) sdp += S.parts[i] || "";
+        S.parts = {};
+        S.pc.setRemoteDescription({ type: "answer", sdp: sdp }).catch(function(){});
+      }
+    }
+    return;
+  }
+  if(o.k === "req" && m.f === "a"){
+    if(S && S.st === "done") return;
+    if(rgaAnsweredIds[id]){
+      if(!S){ rgaSessions[id] = { st: "done", answered: true }; rgaSysLine("Soporte pidió ver tu pantalla (solicitud ya respondida)."); }
+      return;
+    }
+    if(!S){
+      S = rgaSessions[id] = { st: "pending", answered: false, parts: {} };
+      var fresh = m.ts ? ((Date.now() / 1000) - m.ts < 120) : true;
+      if(viewing || finalizada || !fresh || rgaBusyOther(id)){
+        S.st = "done"; S.answered = true;
+        rgaSysLine(fresh ? "Soporte pidió ver tu pantalla." : "Soporte pidió ver tu pantalla (la solicitud venció sin respuesta).");
+        return;
+      }
+      var box = $("rgc-msgs"); if(!box) return;
+      var d = document.createElement("div"); d.className = "rga-card"; d.id = "rga-card-" + id;
+      var p = document.createElement("p");
+      p.textContent = "Soporte quiere ver tu pantalla para ayudarte. Solo podrá VERLA mientras tú aceptes: no puede tocar nada, y puedes cortarlo cuando quieras.";
+      var row = document.createElement("div"); row.className = "rga-btns";
+      var bA = document.createElement("button"); bA.type = "button"; bA.className = "rga-ok"; bA.textContent = "Aceptar";
+      var bR = document.createElement("button"); bR.type = "button"; bR.className = "rga-no"; bR.textContent = "Rechazar";
+      bA.addEventListener("click", function(){ rgaAccept(id); });
+      bR.addEventListener("click", function(){ rgaReject(id); });
+      row.appendChild(bA); row.appendChild(bR); d.appendChild(p); d.appendChild(row);
+      box.appendChild(d); box.scrollTop = box.scrollHeight;
+      rgaFastPoll();
+    }
+    return;
+  }
+  if(o.k === "acc"){
+    var c1 = $("rga-card-" + id); if(c1) c1.remove();
+    if(S) S.answered = true;
+    rgaSysLine("Se aceptó la asistencia: soporte está viendo tu pantalla.");
+    return;
+  }
+  if(o.k === "rej"){
+    var c2 = $("rga-card-" + id); if(c2) c2.remove();
+    if(S){ S.answered = true; S.st = "done"; }
+    rgaSysLine("Solicitud de asistencia rechazada.");
+    return;
+  }
+  if(o.k === "err"){
+    var c3 = $("rga-card-" + id); if(c3) c3.remove();
+    if(S){ S.answered = true; if(S.st !== "active" && S.st !== "connecting") S.st = "done"; }
+    rgaSysLine("No se pudo compartir la pantalla.");
+    return;
+  }
+  if(o.k === "end"){
+    var c4 = $("rga-card-" + id); if(c4) c4.remove();
+    if(S && (S.st === "active" || S.st === "connecting")) rgaEnd(id, true);
+    else rgaSysLine("La asistencia remota terminó.");
+    return;
+  }
+}
+var rgaStopB = $("rga-stop");
+if(rgaStopB) rgaStopB.addEventListener("click", function(){
+  for(var k in rgaSessions){ var s = rgaSessions[k]; if(s && (s.st === "active" || s.st === "connecting")){ rgaEnd(k, false); break; } }
+});
+
 /* ===== Administrador: bienvenida una vez por sesión + menú extra ===== */
 function showWelcome(){
   try{ if(sessionStorage.getItem("rg_admin_welcomed")) return false; sessionStorage.setItem("rg_admin_welcomed", "1"); }catch(e){}
@@ -5952,30 +6221,48 @@ function applyAdmin(token){
   if(c){ c.href = ADMIN_CHAT; c.style.display = ""; }
 }
 window.__rgApplyAdmin = applyAdmin;
-var sessTok = "", sessChecked = "";
+var sessTok = "", sessChecked = "", acctFailedTok = "";
 function playerAdminCheck(){
-  var raw = ls("rager_sess"); var t = "";
-  try{ var s = raw ? JSON.parse(raw) : null; t = (s && s.t) || ""; }catch(e){}
+  var t = siteToken();
   sessTok = t;
   var p = document.getElementById("pm-panel"), c = document.getElementById("pm-chat");
-  if(!t){ if(p) p.classList.add("hidden"); if(c) c.classList.add("hidden"); sessChecked = ""; return; }
+  if(!t){
+    if(p) p.classList.add("hidden"); if(c) c.classList.add("hidden");
+    sessChecked = ""; acctFailedTok = "";
+    /* Sin sesión, la cuenta guardada ya no manda: el chat vuelve
+       al formulario de visitante. */
+    if(acct){ acct = null; syncGate(); }
+    return;
+  }
   if(t === sessChecked) return;
   sessChecked = t;
   fetch("https://puente.ragerservices.net/cuentas/me", { headers: { "Authorization": "Bearer " + t } })
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(j){
-      if(j && j.email && (!acct || acct.token !== t)){
-        acct = { name: (((j.name || "") + " " + (j.lastName || "")).trim() || j.email), email: j.email, token: t };
-        fetch(BASE + "/myconv", { headers: { "Authorization": "Bearer " + t } })
-          .then(function(r){ return r.ok ? r.json() : null; })
-          .then(function(m){ if(m && m.conv && m.conv !== acctConv){ acctConv = m.conv; lsSet("rager_chat_conv_acc", acctConv); seen = 0; } })
-          .catch(function(){});
+      if(j && j.email){
+        acctFailedTok = "";
+        if(!acct || acct.token !== t){
+          acct = { name: (((j.name || "") + " " + (j.lastName || "")).trim() || j.email), email: j.email, token: t };
+          fetch(BASE + "/myconv", { headers: { "Authorization": "Bearer " + t } })
+            .then(function(r){ return r.ok ? r.json() : null; })
+            .then(function(m){ if(m && m.conv && m.conv !== acctConv){ acctConv = m.conv; lsSet("rager_chat_conv_acc", acctConv); seen = 0; } })
+            .catch(function(){});
+        }
+        /* La cuenta ya manda: si el panel está abierto, el
+           formulario se retira en el acto (antes se quedaba
+           visible aunque la sesión ya estuviera resuelta). */
+        syncGate();
+      } else {
+        /* La cuenta no se pudo resolver con este token: no se da
+           por comprobada (el ciclo reintenta) y el formulario
+           queda como respaldo para que el cliente pueda chatear. */
+        sessChecked = ""; acctFailedTok = t; syncGate();
       }
       var isAdmin = !!(j && j.role === "admin");
       if(p) p.classList.toggle("hidden", !isAdmin);
       if(c) c.classList.toggle("hidden", !isAdmin);
       /* sin bienvenida pasajera: la bienvenida es la página del panel */
-    }).catch(function(){});
+    }).catch(function(){ sessChecked = ""; acctFailedTok = t; syncGate(); });
 }
 playerAdminCheck();
 setInterval(playerAdminCheck, 4000);

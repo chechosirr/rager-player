@@ -5757,6 +5757,14 @@ var convIds = []; try{ convIds = JSON.parse(ls("rager_chat_convs") || "[]") || [
 function noteConv(id){ if(!id) return; if(convIds.indexOf(id) < 0){ convIds.push(id); if(convIds.length > 30) convIds = convIds.slice(-30); lsSet("rager_chat_convs", JSON.stringify(convIds)); } }
 if(conv) noteConv(conv); if(acctConv) noteConv(acctConv);
 var finalizada = false, viewing = null, histOpen = false, lobby = false;
+/* El campo de escribir solo existe con una conversacion ABIERTA y
+   confirmada viva por el servidor (regla de Sergio: sin conversacion
+   iniciada no hay campo para escribir). convOk se enciende cuando
+   /open crea la conversacion, cuando /myconv la adopta (el servidor
+   solo devuelve la activa) o cuando un poll la confirma activa.
+   Una conv guardada en el aparato NO basta: pudo haber sido
+   finalizada (a mano o por inactividad) o borrada del servidor. */
+var convOk = false;
 function siteToken(){
   var t = ls("rager_site_token") || "";
   if(t) return t;
@@ -5785,6 +5793,7 @@ function poll(reset){
       if(typeof j.total === "number") seen = j.total;
       else seen = after + (j.messages || []).length;
       if(j.finalizada) showClosed();
+      else if(!convOk){ convOk = true; syncGate(); }
     }).catch(function(){});
 }
 /* Entrada «Ayuda» estandarizada (igual que la de NEXO): primero la
@@ -5812,7 +5821,7 @@ function syncGate(){
   }
   if(gate) gate.classList.toggle("rgc-hidden", started || histOpen || !!viewing || pending);
   if(msgs) msgs.classList.toggle("rgc-hidden", !started || histOpen);
-  if(form) form.classList.toggle("rgc-hidden", !started || finalizada || histOpen || !!viewing);
+  if(form) form.classList.toggle("rgc-hidden", !started || !activeConv() || !convOk || finalizada || histOpen || !!viewing);
   var fb = $("rgc-finbar"); if(fb) fb.classList.toggle("rgc-hidden", !(started && activeConv() && !finalizada && !histOpen && !viewing));
   var cl = $("rgc-closed"); if(cl) cl.classList.toggle("rgc-hidden", !(started && finalizada && !histOpen && !viewing));
   var ab = $("rgc-againbar"); if(ab) ab.classList.toggle("rgc-hidden", !(started && finalizada && !histOpen && !viewing));
@@ -5836,7 +5845,7 @@ function ensureOpen(){
       if(j && j.ok && j.conv){
         if(acct){ acctConv = j.conv; noteConv(acctConv); lsSet("rager_chat_conv_acc", acctConv); }
         else { conv = j.conv; noteConv(conv); lsSet("rager_chat_conv", conv); }
-        seen = 0; poll(true);
+        convOk = true; seen = 0; syncGate(); poll(true);
       }
     }).catch(function(){ opening = false; });
 }
@@ -5888,7 +5897,7 @@ function doFinalizar(){
     .then(function(){ showClosed(); });
 }
 function newChat(){
-  finalizada = false; viewing = null; histOpen = false; seen = 0;
+  finalizada = false; viewing = null; histOpen = false; seen = 0; convOk = false;
   if(acct){ acctConv = ""; try{ localStorage.removeItem("rager_chat_conv_acc"); }catch(e){} }
   else { conv = ""; try{ localStorage.removeItem("rager_chat_conv"); }catch(e){} }
   var box = $("rgc-msgs"); if(box) box.innerHTML = "";
@@ -5991,7 +6000,7 @@ if(form) form.addEventListener("submit", function(e){
       if(j && j.ok && j.conv && j.conv !== activeConv()){
         if(acct){ acctConv = j.conv; noteConv(acctConv); lsSet("rager_chat_conv_acc", acctConv); }
         else { conv = j.conv; noteConv(conv); lsSet("rager_chat_conv", conv); }
-        seen = 0; poll(true);
+        convOk = true; seen = 0; syncGate(); poll(true);
       }
       else poll(false);
     }).catch(function(){});
@@ -6231,7 +6240,7 @@ function playerAdminCheck(){
     sessChecked = ""; acctFailedTok = "";
     /* Sin sesión, la cuenta guardada ya no manda: el chat vuelve
        al formulario de visitante. */
-    if(acct){ acct = null; syncGate(); }
+    if(acct){ acct = null; convOk = false; syncGate(); }
     return;
   }
   if(t === sessChecked) return;
@@ -6243,9 +6252,10 @@ function playerAdminCheck(){
         acctFailedTok = "";
         if(!acct || acct.token !== t){
           acct = { name: (((j.name || "") + " " + (j.lastName || "")).trim() || j.email), email: j.email, token: t };
+          convOk = false;
           fetch(BASE + "/myconv", { headers: { "Authorization": "Bearer " + t } })
             .then(function(r){ return r.ok ? r.json() : null; })
-            .then(function(m){ if(m && m.conv && m.conv !== acctConv){ acctConv = m.conv; lsSet("rager_chat_conv_acc", acctConv); seen = 0; } })
+            .then(function(m){ if(m && m.conv){ if(m.conv !== acctConv){ acctConv = m.conv; lsSet("rager_chat_conv_acc", acctConv); seen = 0; } convOk = true; syncGate(); } })
             .catch(function(){});
         }
         /* La cuenta ya manda: si el panel está abierto, el
